@@ -20,7 +20,9 @@ private struct MediaCard: View {
                     HStack(spacing: 6) {
                         MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
                         if media.supportsLike {
-                            let liked = media.showsLikedState && media.isLoved
+                            // NetEase cannot report the flag, so its heart only lights while the
+                            // optimistic value is set right after the press.
+                            let liked = media.isLoved
                             Button {
                                 media.toggleLoved()
                                 if media.bundleID == "com.apple.Music" { media.probeMusicTrack() }

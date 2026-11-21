@@ -444,8 +444,17 @@ final class NowPlayingService {
         guard bundleID == "com.apple.Music" else { return }
         let target = !isLoved
         isLoved = target
-        runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] _ in
-            self?.refreshLoved()
+        runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] result in
+            guard let self else { return }
+            if result == nil {
+                // Streaming ("shared") tracks reject `loved`; the star rating is the writable
+                // equivalent there, so fall back to it.
+                self.runAppleScript("tell application \"Music\" to set rating of current track to \(target ? 100 : 0)") { _ in
+                    self.refreshLoved()
+                }
+            } else {
+                self.refreshLoved()
+            }
         }
     }
 
@@ -456,10 +465,20 @@ final class NowPlayingService {
             return
         }
         runAppleScript("tell application \"Music\" to get loved of current track") { [weak self] descriptor in
+            guard let self else { return }
             // 'bool' — the descriptor type Apple events use for a boolean result.
             let typeBoolean = FourCharCode(0x626F_6F6C)
-            guard let descriptor, descriptor.descriptorType == typeBoolean else { return }
-            self?.isLoved = descriptor.booleanValue
+            let typeSInt32 = FourCharCode(0x6C6F6E67)   // 'long'
+            let typeUInt32 = FourCharCode(0x6C6F6E67)
+            if let descriptor, descriptor.descriptorType == typeBoolean {
+                self.isLoved = descriptor.booleanValue
+                return
+            }
+            // Streaming tracks have no `loved`; mirror the star rating instead.
+            self.runAppleScript("tell application \"Music\" to get rating of current track") { rating in
+                guard let rating, rating.descriptorType == typeSInt32 || rating.descriptorType == typeUInt32 else { return }
+                self.isLoved = rating.int32Value >= 100
+            }
         }
     }
 
