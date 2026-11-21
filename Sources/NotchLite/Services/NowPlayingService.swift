@@ -156,6 +156,13 @@ final class NowPlayingService {
     // MARK: - Lifecycle
 
     func start() {
+        // Ask once so the app lands in System Settings → Accessibility; the toggle itself can only
+        // be flipped by hand, so surface it early instead of waiting for a failed button press.
+        let prompted = UserDefaults.standard.bool(forKey: "askedForAccessibility")
+        if !HotkeyInjector.isTrusted && !prompted {
+            UserDefaults.standard.set(true, forKey: "askedForAccessibility")
+            HotkeyInjector.requestTrust()
+        }
         guard let launch = Self.launchConfiguration() else {
             isAvailable = false
             NSLog("[NowPlaying] MediaRemote bridge not found; Now Playing disabled")
@@ -409,7 +416,7 @@ final class NowPlayingService {
         } else if canControl {
             send(isPlaying ? 1 : 0, to: bundle)
         } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.playPause(.controlOptionP)
+            HotkeyInjector.playPause(.netEase)
         }
         updateActivity()
     }
@@ -421,7 +428,7 @@ final class NowPlayingService {
         } else if canControl {
             send(4, to: bundle)
         } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.next(.controlOptionP)
+            HotkeyInjector.next(.netEase)
         }
     }
 
@@ -432,7 +439,7 @@ final class NowPlayingService {
         } else if canControl {
             send(5, to: bundle)
         } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.previous(.controlOptionP)
+            HotkeyInjector.previous(.netEase)
         }
     }
 
