@@ -300,10 +300,10 @@ final class NotchController {
         let interactive = overNotch || overControls
         if panel.ignoresMouseEvents != !interactive { panel.ignoresMouseEvents = !interactive }
 
-        // Dragging a file onto the notch opens the shelf. The trigger is deliberately much larger
-        // than the notch itself, so it only fires when the pointer is actually carrying something —
-        // otherwise selecting text or moving a window near the notch would pop the shelf open.
-        if NSEvent.pressedMouseButtons & 1 != 0, dragTargetRect().contains(mouse), isCarryingDragPayload {
+        // Dragging a file onto the notch opens the shelf. The trigger stays the notch itself — a
+        // wider one popped open for every drag that happened to pass nearby — but once it fires the
+        // shelf stays put until the mouse is released, so carrying the file in is not a balancing act.
+        if overNotch, NSEvent.pressedMouseButtons & 1 != 0, isCarryingDragPayload {
             expandedForDrag = true
             hideHoverControls()
             expand(tab: .shelf)
@@ -335,11 +335,6 @@ final class NotchController {
         let pasteboard = NSPasteboard(name: .drag)
         guard pasteboard.changeCount != pressDragChangeCount else { return false }
         return pasteboard.canReadObject(forClasses: [NSURL.self, NSImage.self, NSString.self], options: nil)
-    }
-
-    /// Generous drop target around the notch, used only while a drag is in progress.
-    private func dragTargetRect() -> NSRect {
-        notchRect().insetBy(dx: -70, dy: -60)
     }
 
     /// The trailing wing — the side the waveform and the transport controls live on.
