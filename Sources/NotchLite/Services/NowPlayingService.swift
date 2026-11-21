@@ -95,7 +95,7 @@ final class NowPlayingService {
 
     /// Players that answered "Failed to seek": NetEase rejects it even when it holds the slot, so
     /// the progress bar must not pretend otherwise.
-    private(set) var seekUnsupported: Set<String> = ["com.netease.163music"]
+    private(set) var seekUnsupported: Set<String> = []
 
     /// Seeking needs either a scripting dictionary or a player that actually accepts remote seeks.
     var canSeek: Bool {
