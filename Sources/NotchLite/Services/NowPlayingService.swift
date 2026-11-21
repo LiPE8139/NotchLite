@@ -324,15 +324,8 @@ final class NowPlayingService {
     }
 
     /// One-shot read of the active session's artwork through the single-session adapter.
-    static func trace(_ line: String) {
-        let data = (line + "\n").data(using: .utf8)!
-        let url = URL(fileURLWithPath: "/tmp/notchlite-art.log")
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() }
-        else { try? data.write(to: url) }
-    }
-
     private static func loadActiveArtwork() async -> (bundle: String, image: NSImage)? {
-        guard let paths = AdapterPaths.locate() else { trace("locate() = nil"); return nil }
+        guard let paths = AdapterPaths.locate() else { return nil }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let process = Process()
@@ -350,7 +343,6 @@ final class NowPlayingService {
                       let raw = Data(base64Encoded: base64),
                       let image = thumbnail(from: raw, maxPixelSize: 256)
                 else { continuation.resume(returning: nil); return }
-                NowPlayingService.trace("artwork ok bundle=\(bundle) bytes=\(raw.count)")
                 continuation.resume(returning: (bundle, image))
             }
         }

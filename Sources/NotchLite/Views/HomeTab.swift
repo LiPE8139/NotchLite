@@ -77,6 +77,8 @@ private struct MediaCard: View {
             IconButton(symbol: "forward.fill", size: 15) { media.next() }
         }
         .frame(maxWidth: .infinity)
+        .disabled(!media.canControl)
+        .opacity(media.canControl ? 1 : 0.35)
     }
 }
 

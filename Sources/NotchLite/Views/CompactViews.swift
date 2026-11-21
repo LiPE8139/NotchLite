@@ -99,6 +99,9 @@ private struct TransportControls: View {
         }
         // The glyph for play/pause swaps without the row resizing.
         .frame(width: 51)
+        // Commands only reach the session holding the system's playback slot.
+        .disabled(!media.canControl)
+        .opacity(media.canControl ? 1 : 0.35)
     }
 
     private func button(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
