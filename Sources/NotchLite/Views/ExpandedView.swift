@@ -41,6 +41,8 @@ struct ExpandedView: View {
                                        selected: source.id == model.media.selected?.id,
                                        icon: model.media.icon(for: source.bundleID)) {
                                 model.media.select(source.id)
+                                // Picking a player from the header should show it, wherever we are.
+                                model.tab = .home
                             }
                         }
                     }
