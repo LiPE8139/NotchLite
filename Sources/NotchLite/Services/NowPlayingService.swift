@@ -91,7 +91,7 @@ final class NowPlayingService {
 
     /// Whether the transport should be offered: scriptable players always, the rest only while they
     /// hold the system's playback slot (MediaRemote drops commands for anything else).
-    var canControl: Bool { canScript || (selected?.isActive ?? false) }
+    var canControl: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
 
     /// Cached artwork for this player, or its icon when the player never offered any (video
     /// sources have none, and that is fine).
@@ -390,12 +390,26 @@ final class NowPlayingService {
         return Self.scriptableBundles.contains(bundle)
     }
 
+    /// Players that expose neither MediaRemote command rights nor a scripting dictionary, but do
+    /// register global hotkeys we can press.
+    private static let hotkeyBundles: Set<String> = ["com.netease.163music"]
+
+    var canUseHotkeys: Bool {
+        guard let bundle = selected?.bundleID else { return false }
+        return Self.hotkeyBundles.contains(bundle)
+    }
+
+    /// True when the transport can do something for the shown session by any route.
+    var canTransport: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
+
     func togglePlayPause() {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, isPlaying ? "pause" : "play")
-        } else {
+        } else if canControl {
             send(isPlaying ? 1 : 0, to: bundle)
+        } else if Self.hotkeyBundles.contains(bundle) {
+            HotkeyInjector.playPause(.controlOptionP)
         }
         updateActivity()
     }
@@ -404,8 +418,10 @@ final class NowPlayingService {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, "next track")
-        } else {
+        } else if canControl {
             send(4, to: bundle)
+        } else if Self.hotkeyBundles.contains(bundle) {
+            HotkeyInjector.next(.controlOptionP)
         }
     }
 
@@ -413,8 +429,10 @@ final class NowPlayingService {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, "previous track")
-        } else {
+        } else if canControl {
             send(5, to: bundle)
+        } else if Self.hotkeyBundles.contains(bundle) {
+            HotkeyInjector.previous(.controlOptionP)
         }
     }
 
