@@ -282,7 +282,7 @@ final class NotchController {
             return
         }
 
-        let overNotch = notchRect().insetBy(dx: -2, dy: -2).contains(mouse)
+        let overNotch = notchRect().insetBy(dx: -2, dy: -10).contains(mouse)
         let overWaveform = model.canShowWings && waveformRect().contains(mouse)
         // Once shown, the controls stay reachable from anywhere on the island.
         let overControls = model.isHovering && islandRect().insetBy(dx: 0, dy: -4).contains(mouse)
@@ -305,6 +305,8 @@ final class NotchController {
         // shelf stays put until the mouse is released, so carrying the file in is not a balancing act.
         if overNotch, NSEvent.pressedMouseButtons & 1 != 0, isCarryingDragPayload {
             expandedForDrag = true
+            // If fullscreen hiding parked the panel, bring it back for the drop.
+            if isHiddenForFullscreen { setHiddenForFullscreen(false) }
             hideHoverControls()
             expand(tab: .shelf)
         }
@@ -381,6 +383,9 @@ final class NotchController {
     /// Another app went fullscreen (video, game, slideshow): get out of its way, and come back
     /// when it leaves. The physical notch stays black either way.
     private func setHiddenForFullscreen(_ hidden: Bool) {
+        // A drag is in progress: never take the panel away from under the file being carried.
+        // Fullscreen detection can also misfire on the window that started the drag.
+        if hidden, NSEvent.pressedMouseButtons & 1 != 0 { return }
         if hidden {
             if !isHiddenForFullscreen {
                 isHiddenForFullscreen = true
