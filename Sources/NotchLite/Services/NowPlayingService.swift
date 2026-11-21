@@ -69,6 +69,8 @@ final class NowPlayingService {
     /// A track that asked for artwork while a fetch was already running.
     @ObservationIgnored private var pendingArtwork: MediaSource?
     @ObservationIgnored private var lastActiveID: String?
+    /// Apple Music's "loved" flag for the current track.
+    private(set) var isLoved = false
 
     var selected: MediaSource? {
         if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
@@ -309,8 +311,9 @@ final class NowPlayingService {
             lastActiveID = nil
         }
 
-        if lastTrackKey != previousKey, !lastTrackKey.isEmpty, isPlaying {
-            onTrackChange?()
+        if lastTrackKey != previousKey, !lastTrackKey.isEmpty {
+            refreshLoved()
+            if isPlaying { onTrackChange?() }
         }
     }
 
@@ -419,6 +422,43 @@ final class NowPlayingService {
     var canScript: Bool {
         guard let bundle = selected?.bundleID else { return false }
         return Self.scriptableBundles.contains(bundle)
+    }
+
+    /// Only Apple Music exposes a per-track "loved" flag through its scripting dictionary.
+    var supportsLoved: Bool { bundleID == "com.apple.Music" }
+
+    /// Flips the heart for the current track, optimistically, then re-reads to confirm.
+    func toggleLoved() {
+        guard supportsLoved else { return }
+        let target = !isLoved
+        isLoved = target
+        runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] _ in
+            self?.refreshLoved()
+        }
+    }
+
+    /// Re-reads the flag; called on track changes and after a toggle.
+    private func refreshLoved() {
+        guard supportsLoved else {
+            if isLoved { isLoved = false }
+            return
+        }
+        runAppleScript("tell application \"Music\" to get loved of current track") { [weak self] descriptor in
+            // 'bool' — the descriptor type Apple events use for a boolean result.
+            let typeBoolean = FourCharCode(0x626F_6F6C)
+            guard let descriptor, descriptor.descriptorType == typeBoolean else { return }
+            self?.isLoved = descriptor.booleanValue
+        }
+    }
+
+    private func runAppleScript(_ source: String,
+                                completion: @escaping (NSAppleEventDescriptor?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var error: NSDictionary?
+            let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+            if let error { NSLog("[NowPlaying] applescript failed: \(error)") }
+            DispatchQueue.main.async { completion(result) }
+        }
     }
 
     /// Players that expose neither MediaRemote command rights nor a scripting dictionary, but do
