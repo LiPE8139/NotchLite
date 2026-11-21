@@ -57,10 +57,15 @@ final class NowPlayingService {
     @ObservationIgnored private var accents: [String: Color] = [:]
     /// Last artwork seen for each player. Only the active session is ever re-read; the rest keep
     /// whatever they last had, which is what makes switching back feel instant.
-    @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
-    @ObservationIgnored private var artworkAccent: [String: Color] = [:]
+    ///
+    /// Deliberately observed (no `@ObservationIgnored`): storing a freshly fetched cover has to
+    /// invalidate the views, otherwise they stay on the icon fallback forever.
+    private var artworkCache: [String: NSImage] = [:]
+    private var artworkAccent: [String: Color] = [:]
     @ObservationIgnored private var artworkKey: [String: String] = [:]
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    /// A track that asked for artwork while a fetch was already running.
+    @ObservationIgnored private var pendingArtwork: MediaSource?
     @ObservationIgnored private var lastActiveID: String?
 
     var selected: MediaSource? {
@@ -275,23 +280,53 @@ final class NowPlayingService {
     /// one that exposes it, and the others keep their previous image until they become active.
     private func refreshArtwork(for source: MediaSource) {
         let key = "\(source.title)|\(source.artist)"
-        guard artworkKey[source.bundleID] != key, artworkTask == nil else { return }
-        artworkKey[source.bundleID] = key
+        guard artworkKey[source.bundleID] != key else { return }
+        // Skipping tracks quickly must not drop the new track's request.
+        guard artworkTask == nil else { pendingArtwork = source; return }
         artworkTask = Task { [weak self] in
-            let loaded = await Self.loadActiveArtwork()
+            // Players publish the cover a moment after the metadata, so the first read often comes
+            // back empty. Retry briefly before giving up until the next track.
+            for attempt in 1...4 {
+                if let loaded = await Self.loadActiveArtwork() {
+                    self?.store(artwork: loaded.image, for: loaded.bundle)
+                    self?.artworkKey[source.bundleID] = key
+                    break
+                }
+                if attempt < 4 { try? await Task.sleep(for: .milliseconds(450)) }
+            }
             guard let self else { return }
+            if self.artworkKey[source.bundleID] != key {
+                self.artworkKey[source.bundleID] = key
+            }
             self.artworkTask = nil
-            guard let loaded else { return }
-            self.artworkCache[loaded.bundle] = loaded.image
-            if let tint = loaded.image.vibrantAverageColor {
-                self.artworkAccent[loaded.bundle] = Color(nsColor: tint)
+            if let next = self.pendingArtwork {
+                self.pendingArtwork = nil
+                self.refreshArtwork(for: next)
             }
         }
     }
 
+    private func store(artwork image: NSImage, for bundle: String) {
+        var covers = artworkCache
+        covers[bundle] = image
+        artworkCache = covers
+        if let tint = image.vibrantAverageColor {
+            var tints = artworkAccent
+            tints[bundle] = Color(nsColor: tint)
+            artworkAccent = tints
+        }
+    }
+
     /// One-shot read of the active session's artwork through the single-session adapter.
+    static func trace(_ line: String) {
+        let data = (line + "\n").data(using: .utf8)!
+        let url = URL(fileURLWithPath: "/tmp/notchlite-art.log")
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() }
+        else { try? data.write(to: url) }
+    }
+
     private static func loadActiveArtwork() async -> (bundle: String, image: NSImage)? {
-        guard let paths = AdapterPaths.locate() else { return nil }
+        guard let paths = AdapterPaths.locate() else { trace("locate() = nil"); return nil }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let process = Process()
@@ -309,6 +344,7 @@ final class NowPlayingService {
                       let raw = Data(base64Encoded: base64),
                       let image = thumbnail(from: raw, maxPixelSize: 256)
                 else { continuation.resume(returning: nil); return }
+                NowPlayingService.trace("artwork ok bundle=\(bundle) bytes=\(raw.count)")
                 continuation.resume(returning: (bundle, image))
             }
         }
