@@ -10,12 +10,14 @@ typedef void (*GetClientsFn)(dispatch_queue_t, void (^)(NSArray *));
 typedef id   (*GetOriginFn)(void);
 typedef void (*InfoFn)(id, id, id, dispatch_queue_t, void (^)(id));
 typedef void (*GetActiveFn)(dispatch_queue_t, void (^)(id));
+typedef void (*SendToClientFn)(int, id, id, id, id, id, void (^)(void));
 
 static void *MR = NULL;
 static GetClientsFn pGetClients;
 static GetOriginFn  pGetOrigin;
 static InfoFn       pGetInfo;
 static GetActiveFn  pGetActive;
+static SendToClientFn pSendToClient;
 
 static BOOL loadMediaRemote(void) {
     if (MR) return YES;
@@ -25,6 +27,7 @@ static BOOL loadMediaRemote(void) {
     pGetOrigin  = (GetOriginFn)dlsym(MR, "MRMediaRemoteGetLocalOrigin");
     pGetInfo    = (InfoFn)dlsym(MR, "MRMediaRemoteGetNowPlayingInfoForClient");
     pGetActive  = (GetActiveFn)dlsym(MR, "MRMediaRemoteGetNowPlayingClient");
+    pSendToClient = (SendToClientFn)dlsym(MR, "MRMediaRemoteSendCommandToClient");
     return pGetClients && pGetOrigin && pGetInfo;
 }
 
@@ -156,11 +159,58 @@ static NSString *buildState(void) {
     return json;
 }
 
+/// Sends a transport command to one specific session, whatever the system considers active.
+///
+/// The argument order was verified against the framework: (command, options, origin, client, …).
+/// Explicit play/pause beats the toggle command, which some players (NetEase) ignore.
+static void sendCommandToClient(NSString *bundle, int command) {
+    if (!pSendToClient || bundle.length == 0) return;
+    id client = nil;
+    for (id c in fetchClients()) {
+        if ([[c valueForKey:@"bundleIdentifier"] isEqualToString:bundle]) { client = c; break; }
+    }
+    if (!client) return;
+    pSendToClient(command, nil, pGetOrigin(), client, nil, nil, ^{});
+}
+
+/// Reads `{"bundle":"…","cmd":N}` lines from stdin, so the app can drive other sessions without
+/// spawning a process per button press.
+static void drainCommands(void) {
+    static char chunk[4096];
+    static NSMutableData *buffer = nil;
+    if (!buffer) buffer = [NSMutableData data];
+    ssize_t n = read(0, chunk, sizeof(chunk));
+    if (n <= 0) return;
+    [buffer appendBytes:chunk length:(NSUInteger)n];
+    while (YES) {
+        NSRange newline = [buffer rangeOfData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]
+                                      options:0 range:NSMakeRange(0, buffer.length)];
+        if (newline.location == NSNotFound) break;
+        NSData *line = [buffer subdataWithRange:NSMakeRange(0, newline.location)];
+        [buffer replaceBytesInRange:NSMakeRange(0, newline.location + 1) withBytes:NULL length:0];
+        NSDictionary *command = [NSJSONSerialization JSONObjectWithData:line options:0 error:NULL];
+        if (![command isKindOfClass:[NSDictionary class]]) continue;
+        NSString *bundle = command[@"bundle"];
+        NSNumber *cmd = command[@"cmd"];
+        if ([bundle isKindOfClass:[NSString class]] && [cmd isKindOfClass:[NSNumber class]]) {
+            sendCommandToClient(bundle, cmd.intValue);
+        }
+    }
+}
+
 /// Streams a line whenever the set of sessions or their metadata changes.
 void bridge_stream(void) {
     if (!loadMediaRemote()) { printf("{\"error\":\"mediaremote unavailable\"}\n"); fflush(stdout); return; }
     NSString *last = nil;
     for (;;) {
+        // The select timeout doubles as the polling interval; a command wakes us early.
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(0, &readable);
+        struct timeval timeout = {0, 400 * 1000};
+        if (select(1, &readable, NULL, NULL, &timeout) > 0 && FD_ISSET(0, &readable)) {
+            drainCommands();
+        }
         @autoreleasepool {
             NSString *state = buildState();
             if (![state isEqualToString:last]) {
@@ -169,7 +219,6 @@ void bridge_stream(void) {
                 fflush(stdout);
             }
         }
-        usleep(400 * 1000);
     }
 }
 

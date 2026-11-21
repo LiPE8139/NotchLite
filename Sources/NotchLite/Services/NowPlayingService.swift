@@ -48,6 +48,8 @@ final class NowPlayingService {
     @ObservationIgnored var onTrackChange: (() -> Void)?
 
     @ObservationIgnored private var process: Process?
+    /// The bridge's stdin: `{"bundle":"…","cmd":N}` addresses one session directly.
+    @ObservationIgnored private var commandPipe: Pipe?
     @ObservationIgnored private var lineBuffer = Data()
     @ObservationIgnored private var restarts = 0
     @ObservationIgnored private var hideActivityTask: Task<Void, Never>?
@@ -163,8 +165,11 @@ final class NowPlayingService {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
         process.arguments = [launch.script.path, launch.library.path, "bridge_stream"]
         let pipe = Pipe()
+        let commands = Pipe()
         process.standardOutput = pipe
+        process.standardInput = commands
         process.standardError = FileHandle.nullDevice
+        self.commandPipe = commands
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
@@ -186,6 +191,7 @@ final class NowPlayingService {
         process?.terminationHandler = nil
         process?.terminate()
         process = nil
+        commandPipe = nil
     }
 
     private func killOrphaned() {
@@ -381,38 +387,41 @@ final class NowPlayingService {
 
     // MARK: - Transport
 
-    /// The bridge reports which session is active; commands go to that one. Passing through the
-    /// old adapter keeps a single, already-proven command path until per-client sending is wired.
+    /// Commands address the shown session directly, so a paused player can be resumed even while
+    /// another one owns the system's active slot. Explicit play/pause is used instead of the toggle
+    /// command, which some players (NetEase) ignore.
     func togglePlayPause() {
-        guard canControl else { return }
-        send(2)
+        guard let bundle = selected?.bundleID else { return }
+        send(isPlaying ? 1 : 0, to: bundle)
         updateActivity()
     }
 
     func next() {
-        guard canControl else { return }
-        send(4)
+        guard let bundle = selected?.bundleID else { return }
+        send(4, to: bundle)
     }
 
     func previous() {
-        guard canControl else { return }
-        send(5)
+        guard let bundle = selected?.bundleID else { return }
+        send(5, to: bundle)
     }
 
+    /// Seeking has no per-session API, so it only applies to the session the system is driving.
     func seek(to seconds: TimeInterval) {
         guard canControl, let adapter = Self.adapterPaths() else { return }
         runAdapter(adapter, ["seek", String(Int(seconds * 1_000_000))])
+    }
+
+    private func send(_ command: Int, to bundle: String) {
+        guard let handle = commandPipe?.fileHandleForWriting else { return }
+        let line = "{\"bundle\":\"\(bundle)\",\"cmd\":\(command)}\n"
+        try? handle.write(contentsOf: Data(line.utf8))
     }
 
     func openPlayerApp() {
         guard let bundleID,
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-    }
-
-    private func send(_ command: Int) {
-        guard let adapter = Self.adapterPaths() else { return }
-        runAdapter(adapter, ["send", String(command)])
     }
 
     private func runAdapter(_ paths: AdapterPaths, _ args: [String]) {

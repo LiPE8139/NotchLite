@@ -77,9 +77,6 @@ private struct MediaCard: View {
             IconButton(symbol: "forward.fill", size: 15) { media.next() }
         }
         .frame(maxWidth: .infinity)
-        // Commands still go through the system's active session, so they are only offered for it.
-        .disabled(!media.canControl)
-        .opacity(media.canControl ? 1 : 0.35)
     }
 }
 
@@ -111,6 +108,8 @@ private struct ScrubBar: View {
                         })
                 }
                 .frame(height: 12)
+                // No per-session seek API yet, so dragging only applies to the active session.
+                .allowsHitTesting(media.canControl)
                 Text("-" + format(max(0, media.duration - elapsed)))
             }
             .font(.system(size: 10, weight: .medium).monospacedDigit())
