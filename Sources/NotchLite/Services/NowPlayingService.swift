@@ -1,78 +1,146 @@
 import AppKit
+import Foundation
 import SwiftUI
 
-/// Now Playing info for any app (Music, Spotify, browsers…).
+/// One concurrent Now Playing session, as reported by the MediaRemote bridge.
 ///
-/// Since macOS 15.4 only `com.apple.*` processes may read MediaRemote, so we go through
-/// ungive/mediaremote-adapter: `/usr/bin/perl` (an Apple platform binary) loads the adapter
-/// framework and streams JSON lines to our stdout pipe.
+/// Several of these can exist at once — a song in Music and a video in a browser — which is what
+/// the system's own Now Playing panel shows.
+struct MediaSource: Identifiable, Equatable {
+    let bundleID: String
+    let displayName: String
+    let pid: Int32
+    var title: String
+    var artist: String
+    var album: String
+    var duration: TimeInterval
+    var elapsed: TimeInterval
+    var rate: Double
+    var isPlaying: Bool
+    /// The session the system currently routes transport commands to.
+    var isActive: Bool
+    /// When the bridge reported this snapshot; elapsed is extrapolated from here.
+    var reportedAt: Date
+
+    var id: String { bundleID }
+
+    func elapsed(at date: Date) -> TimeInterval {
+        guard isPlaying, rate > 0 else { return max(0, min(elapsed, duration > 0 ? duration : elapsed)) }
+        let projected = elapsed + date.timeIntervalSince(reportedAt) * rate
+        return duration > 0 ? min(max(projected, 0), duration) : max(projected, 0)
+    }
+}
+
+/// Streams every Now Playing session through the MediaRemote bridge and tracks which one the
+/// island is showing.
+///
+/// Since macOS 15.4 MediaRemote refuses non-Apple callers, so the bridge is a dylib loaded by
+/// `/usr/bin/perl`: same trick the previous single-session adapter used, but reading the
+/// multi-session API.
 @Observable @MainActor
 final class NowPlayingService {
-    private(set) var title = ""
-    private(set) var artist = ""
-    private(set) var album = ""
-    private(set) var artwork: NSImage?
-    private(set) var accent: Color = .white
-    private(set) var isPlaying = false
-    private(set) var duration: TimeInterval = 0
-    private(set) var bundleID: String? {
-        didSet { if bundleID != oldValue { playerIcon = Self.icon(forBundleID: bundleID) } }
-    }
-    /// Icon of the app that is playing, looked up once per app rather than on every render.
-    private(set) var playerIcon: NSImage?
+    private(set) var sources: [MediaSource] = []
+    /// Nil follows whatever the system considers active.
+    private(set) var selectedID: String?
     private(set) var isAvailable = true
-    /// Stays true for a few seconds after pausing so the live activity does not flicker away.
     private(set) var showsActivity = false
-
-    private var elapsedAnchor: TimeInterval = 0
-    private var anchorDate = Date()
-    private var rate: Double = 1
 
     @ObservationIgnored var onTrackChange: (() -> Void)?
 
-    @ObservationIgnored private var state: [String: Any] = [:]
-    @ObservationIgnored private var artworkGeneration = 0
     @ObservationIgnored private var process: Process?
     @ObservationIgnored private var lineBuffer = Data()
     @ObservationIgnored private var restarts = 0
     @ObservationIgnored private var hideActivityTask: Task<Void, Never>?
-    @ObservationIgnored private let adapter = AdapterPaths.locate()
+    @ObservationIgnored private var lastTrackKey = ""
+    @ObservationIgnored private var pinned = false
+    @ObservationIgnored private var icons: [String: NSImage] = [:]
+    @ObservationIgnored private var accents: [String: Color] = [:]
 
-    var hasMedia: Bool { !title.isEmpty }
-
-    /// Players that count as music. Browsers, video apps and podcast players still update the
-    /// panel, but they must not grow the island on their own.
-    private static let musicBundleIDs: Set<String> = [
-        "com.apple.Music",
-        "com.spotify.client",
-        "com.netease.163music",
-        "com.tencent.QQMusic",
-        "com.tencent.QQMusicMac",
-    ]
-
-    var isMusicApp: Bool {
-        guard let bundleID else { return false }
-        return Self.musicBundleIDs.contains(bundleID)
+    var selected: MediaSource? {
+        if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
+        return sources.first
     }
 
-    func elapsed(at date: Date) -> TimeInterval {
-        var t = elapsedAnchor
-        if isPlaying { t += date.timeIntervalSince(anchorDate) * rate }
-        return duration > 0 ? min(max(t, 0), duration) : max(t, 0)
+    // MARK: - What the views read
+
+    var title: String { selected?.title ?? "" }
+    var artist: String { selected?.artist ?? "" }
+    var album: String { selected?.album ?? "" }
+    var duration: TimeInterval { selected?.duration ?? 0 }
+    var isPlaying: Bool { selected?.isPlaying ?? false }
+    var hasMedia: Bool { selected != nil }
+    var bundleID: String? { selected?.bundleID }
+    var displayName: String { selected?.displayName ?? "" }
+
+    /// Transport only works while the shown session is the one the system is driving.
+    var canControl: Bool { selected?.isActive ?? false }
+
+    /// Album art is not available for secondary sessions yet, so fall back to the player's icon.
+    var artwork: NSImage? { selected.map { icon(for: $0.bundleID) } }
+    var playerIcon: NSImage? { selected.map { icon(for: $0.bundleID) } }
+    var accent: Color {
+        guard let bundle = selected?.bundleID else { return .white }
+        return accents[bundle] ?? .white
+    }
+
+    func elapsed(at date: Date) -> TimeInterval { selected?.elapsed(at: date) ?? 0 }
+
+    /// Player icon, also used by the session switcher in the header.
+    func icon(for bundle: String) -> NSImage {
+        if let cached = icons[bundle] { return cached }
+        let image: NSImage
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+            image = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            image = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil) ?? NSImage()
+        }
+        icons[bundle] = image
+        accents[bundle] = Color(nsColor: image.vibrantAverageColor ?? .white)
+        return image
+    }
+
+    // MARK: - Switching sessions
+
+    func selectNext() { step(by: 1) }
+    func selectPrevious() { step(by: -1) }
+
+    private func step(by delta: Int) {
+        guard sources.count > 1 else { return }
+        let current = sources.firstIndex { $0.id == (selected?.id ?? "") } ?? 0
+        let next = (current + delta + sources.count) % sources.count
+        pinned = true
+        selectedID = sources[next].id
+        lastTrackKey = trackKey(of: sources[next])
+        updateActivity()
+    }
+
+    func select(_ id: String) {
+        guard let match = sources.first(where: { $0.id == id }) else { return }
+        pinned = true
+        selectedID = id
+        lastTrackKey = trackKey(of: match)
+        updateActivity()
+    }
+
+    /// Back to following the system's active session.
+    func followSystem() {
+        pinned = false
+        selectedID = nil
+        updateActivity()
     }
 
     // MARK: - Lifecycle
 
     func start() {
-        guard let adapter else {
+        guard let launch = Self.launchConfiguration() else {
             isAvailable = false
-            NSLog("[NowPlaying] mediaremote-adapter not found; Now Playing disabled")
+            NSLog("[NowPlaying] MediaRemote bridge not found; Now Playing disabled")
             return
         }
-        killOrphanedAdapters(script: adapter.script.path)
+        killOrphaned()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [adapter.script.path, adapter.framework.path, "stream", "--micros", "--debounce=50"]
+        process.arguments = [launch.script.path, launch.library.path, "bridge_stream"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -82,14 +150,14 @@ final class NowPlayingService {
             DispatchQueue.main.async { self?.consume(data) }
         }
         process.terminationHandler = { [weak self] proc in
-            DispatchQueue.main.async { self?.adapterExited(status: proc.terminationStatus, reason: proc.terminationReason) }
+            DispatchQueue.main.async { self?.bridgeExited(status: proc.terminationStatus, reason: proc.terminationReason) }
         }
         do {
             try process.run()
             self.process = process
         } catch {
             isAvailable = false
-            NSLog("[NowPlaying] failed to launch adapter: \(error)")
+            NSLog("[NowPlaying] failed to launch bridge: \(error)")
         }
     }
 
@@ -99,18 +167,16 @@ final class NowPlayingService {
         process = nil
     }
 
-    /// If a previous run crashed, its adapter was re-parented to launchd and keeps running.
-    private func killOrphanedAdapters(script: String) {
+    private func killOrphaned() {
         let pkill = Process()
         pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        pkill.arguments = ["-P", "1", "-f", NSRegularExpression.escapedPattern(for: script)]
+        pkill.arguments = ["-P", "1", "-f", "bridge.pl"]
         try? pkill.run()
         pkill.waitUntilExit()
     }
 
-    private func adapterExited(status: Int32, reason: Process.TerminationReason) {
+    private func bridgeExited(status: Int32, reason: Process.TerminationReason) {
         process = nil
-        // A non-zero exit means the adapter is broken on this macOS; don't hammer it.
         if reason == .exit && status != 0 {
             isAvailable = false
             return
@@ -120,56 +186,7 @@ final class NowPlayingService {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.start() }
     }
 
-    // MARK: - Commands
-
-    func togglePlayPause() {
-        send(2)
-        // Optimistic update so the button reacts instantly.
-        elapsedAnchor = elapsed(at: Date())
-        anchorDate = Date()
-        isPlaying.toggle()
-        updateActivity()
-    }
-
-    func next() { send(4) }
-    func previous() { send(5) }
-
-    func seek(to seconds: TimeInterval) {
-        runAdapter(["seek", String(Int(seconds * 1_000_000))])
-        elapsedAnchor = seconds
-        anchorDate = Date()
-    }
-
-    func openPlayerApp() {
-        guard let bundleID,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-    }
-
-    private static func icon(forBundleID bundleID: String?) -> NSImage? {
-        guard let bundleID,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
-        return NSWorkspace.shared.icon(forFile: url.path)
-    }
-
-    private func send(_ command: Int) { runAdapter(["send", String(command)]) }
-
-    private func runAdapter(_ args: [String]) {
-        guard let adapter else { return }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        p.arguments = [adapter.script.path, adapter.framework.path] + args
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        try? p.run()
-    }
-
-    #if DEBUG
-    /// Feed adapter-format JSON lines as if they came from the stream.
-    func debugConsume(_ data: Data) { consume(data) }
-    #endif
-
-    // MARK: - Stream parsing
+    // MARK: - Bridge output
 
     private func consume(_ data: Data) {
         lineBuffer.append(data)
@@ -178,82 +195,66 @@ final class NowPlayingService {
             lineBuffer.removeSubrange(lineBuffer.startIndex...newline)
             guard !line.isEmpty,
                   let json = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-                  var payload = json["payload"] as? [String: Any] else { continue }
-            // Artwork is a few hundred KB of base64: decode it once, never keep it in `state`.
-            let artwork = payload.removeValue(forKey: "artworkData")
-            payload.removeValue(forKey: "artworkMimeType")
-            let isDiff = json["diff"] as? Bool == true
-            if isDiff {
-                for (key, value) in payload {
-                    if value is NSNull { state.removeValue(forKey: key) } else { state[key] = value }
-                }
+                  let raw = json["sources"] as? [[String: Any]] else { continue }
+            ingest(raw)
+        }
+    }
+
+    private func ingest(_ raw: [[String: Any]]) {
+        let now = Date()
+        var parsed: [MediaSource] = []
+        for item in raw {
+            guard let bundle = item["bundle"] as? String, !bundle.isEmpty,
+                  let title = item["title"] as? String, !title.isEmpty else { continue }
+            parsed.append(MediaSource(
+                bundleID: bundle,
+                displayName: item["name"] as? String ?? bundle,
+                pid: Int32(item["pid"] as? Int ?? 0),
+                title: title,
+                artist: item["artist"] as? String ?? "",
+                album: item["album"] as? String ?? "",
+                duration: item["duration"] as? Double ?? 0,
+                elapsed: item["elapsed"] as? Double ?? 0,
+                rate: item["rate"] as? Double ?? 0,
+                isPlaying: item["playing"] as? Bool ?? false,
+                isActive: item["active"] as? Bool ?? false,
+                reportedAt: now))
+        }
+
+        // The session the system is driving leads the list, like the system's own panel.
+        parsed.sort { a, b in a.isActive == b.isActive ? false : a.isActive }
+
+        let previousKey = lastTrackKey
+        sources = parsed
+
+        if !pinned || !parsed.contains(where: { $0.id == selectedID }) {
+            if let active = parsed.first(where: { $0.isActive }) {
+                selectedID = active.id
+            } else if let current = selectedID, parsed.contains(where: { $0.id == current }) {
+                // keep the current pick while it is still around
             } else {
-                state = payload
+                selectedID = parsed.first?.id
             }
-            // A full payload without artwork means there is none; a diff without it means unchanged.
-            if !isDiff || artwork != nil { applyArtwork(artwork) }
-            apply()
+            if !parsed.contains(where: { $0.id == selectedID }) { pinned = false }
         }
-    }
 
-    private func apply() {
-        let newTitle = state["title"] as? String ?? ""
-        let newArtist = state["artist"] as? String ?? ""
-        let trackChanged = newTitle != title || newArtist != artist
-
-        title = newTitle
-        artist = newArtist
-        album = state["album"] as? String ?? ""
-        bundleID = state["parentApplicationBundleIdentifier"] as? String ?? state["bundleIdentifier"] as? String
-        isPlaying = state["playing"] as? Bool ?? false
-        duration = (state["durationMicros"] as? Double ?? 0) / 1_000_000
-        elapsedAnchor = (state["elapsedTimeMicros"] as? Double ?? 0) / 1_000_000
-        if let ts = state["timestampEpochMicros"] as? Double {
-            anchorDate = Date(timeIntervalSince1970: ts / 1_000_000)
-        } else {
-            anchorDate = Date()
-        }
-        let reportedRate = state["playbackRate"] as? Double ?? 1
-        rate = reportedRate > 0 ? reportedRate : 1
-
+        lastTrackKey = trackKey(of: selected)
         updateActivity()
-        if trackChanged && hasMedia && isPlaying && isMusicApp { onTrackChange?() }
-    }
 
-    /// Decodes off the main thread and downsamples to the largest size we draw (96pt @2x),
-    /// so a track change never stutters the peek animation.
-    private func applyArtwork(_ value: Any?) {
-        artworkGeneration += 1
-        let generation = artworkGeneration
-        guard let base64 = value as? String else {
-            artwork = nil
-            accent = .white
-            return
-        }
-        Task.detached(priority: .userInitiated) {
-            let image = Data(base64Encoded: base64).flatMap { Self.thumbnail(from: $0, maxPixelSize: 256) }
-            let tint = image?.vibrantAverageColor
-            await MainActor.run {
-                guard generation == self.artworkGeneration else { return }
-                self.artwork = image
-                self.accent = Color(nsColor: tint ?? .white)
-            }
+        if lastTrackKey != previousKey, !lastTrackKey.isEmpty, isPlaying {
+            onTrackChange?()
         }
     }
 
-    private nonisolated static func thumbnail(from data: Data, maxPixelSize: Int) -> NSImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-              ] as CFDictionary) else { return nil }
-        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    private func trackKey(of source: MediaSource?) -> String {
+        guard let source else { return "" }
+        return "\(source.bundleID)|\(source.title)|\(source.artist)"
     }
 
     private func updateActivity() {
         hideActivityTask?.cancel()
-        if isPlaying && hasMedia && isMusicApp {
+        hideActivityTask = nil
+        if isPlaying && hasMedia {
             showsActivity = true
         } else if showsActivity {
             hideActivityTask = Task { [weak self] in
@@ -263,9 +264,66 @@ final class NowPlayingService {
             }
         }
     }
+
+    // MARK: - Transport
+
+    /// The bridge reports which session is active; commands go to that one. Passing through the
+    /// old adapter keeps a single, already-proven command path until per-client sending is wired.
+    func togglePlayPause() {
+        guard canControl else { return }
+        send(2)
+        updateActivity()
+    }
+
+    func next() {
+        guard canControl else { return }
+        send(4)
+    }
+
+    func previous() {
+        guard canControl else { return }
+        send(5)
+    }
+
+    func seek(to seconds: TimeInterval) {
+        guard canControl, let adapter = Self.adapterPaths() else { return }
+        runAdapter(adapter, ["seek", String(Int(seconds * 1_000_000))])
+    }
+
+    func openPlayerApp() {
+        guard let bundleID,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    private func send(_ command: Int) {
+        guard let adapter = Self.adapterPaths() else { return }
+        runAdapter(adapter, ["send", String(command)])
+    }
+
+    private func runAdapter(_ paths: AdapterPaths, _ args: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = [paths.script.path, paths.framework.path] + args
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+    }
+
+    #if DEBUG
+    /// Feed bridge-format JSON as if it came from the stream.
+    func debugConsume(_ data: Data) { consume(data) }
+    #endif
 }
 
-/// Where the perl script and adapter framework live: inside the .app bundle, or in vendor/ during development.
+// MARK: - Where the media helpers live
+
+struct BridgeLaunch {
+    let script: URL
+    let library: URL
+}
+
+/// The bridge and the command adapter: inside the .app bundle, or in vendor/ during development.
 struct AdapterPaths {
     let script: URL
     let framework: URL
@@ -278,7 +336,6 @@ struct AdapterPaths {
                 script: resources.appendingPathComponent("mediaremote-adapter.pl"),
                 framework: Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/MediaRemoteAdapter.framework")))
         }
-        // `swift run`: walk up from the executable looking for vendor/mediaremote-adapter.
         var dir = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent()
         for _ in 0..<6 {
             let vendor = dir.appendingPathComponent("vendor/mediaremote-adapter")
@@ -288,6 +345,29 @@ struct AdapterPaths {
             dir = dir.deletingLastPathComponent()
         }
         return candidates.first { fm.fileExists(atPath: $0.script.path) && fm.fileExists(atPath: $0.framework.path) }
+    }
+}
+
+extension NowPlayingService {
+    static func adapterPaths() -> AdapterPaths? { AdapterPaths.locate() }
+
+    static func launchConfiguration() -> BridgeLaunch? {
+        let fm = FileManager.default
+        var candidates: [BridgeLaunch] = []
+        if let resources = Bundle.main.resourceURL {
+            candidates.append(BridgeLaunch(
+                script: resources.appendingPathComponent("bridge.pl"),
+                library: Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/libMediaRemoteBridge.dylib")))
+        }
+        var dir = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent()
+        for _ in 0..<6 {
+            let vendor = dir.appendingPathComponent("vendor/MediaRemoteBridge")
+            candidates.append(BridgeLaunch(
+                script: vendor.appendingPathComponent("bridge.pl"),
+                library: dir.appendingPathComponent("build/libMediaRemoteBridge.dylib")))
+            dir = dir.deletingLastPathComponent()
+        }
+        return candidates.first { fm.fileExists(atPath: $0.script.path) && fm.fileExists(atPath: $0.library.path) }
     }
 }
 

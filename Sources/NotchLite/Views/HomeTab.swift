@@ -61,6 +61,11 @@ private struct MediaCard: View {
             .scaleEffect(media.isPlaying ? 1 : 0.92)
             .animation(.spring(response: 0.4, dampingFraction: 0.6), value: media.isPlaying)
             .onTapGesture { media.openPlayerApp() }
+            // Two-finger style swipe over the cover cycles the sessions that are playing.
+            .gesture(DragGesture(minimumDistance: 24).onEnded { value in
+                if value.translation.height < -24 { media.selectNext() }
+                else if value.translation.height > 24 { media.selectPrevious() }
+            })
             .help("Open the playing app")
     }
 
@@ -72,6 +77,9 @@ private struct MediaCard: View {
             IconButton(symbol: "forward.fill", size: 15) { media.next() }
         }
         .frame(maxWidth: .infinity)
+        // Commands still go through the system's active session, so they are only offered for it.
+        .disabled(!media.canControl)
+        .opacity(media.canControl ? 1 : 0.35)
     }
 }
 

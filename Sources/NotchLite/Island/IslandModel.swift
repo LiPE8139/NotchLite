@@ -72,8 +72,8 @@ final class IslandModel {
         return .idle
     }
 
-    /// Wings only belong to a music player, and only while there is something to show.
-    var canShowWings: Bool { media.hasMedia && media.isMusicApp }
+    /// Any session can own the wings now, the way the system's own Now Playing panel works.
+    var canShowWings: Bool { media.hasMedia }
 
     /// Widths either side of the notch. The trailing side grows to fit the transport controls;
     /// the leading (cover) side never moves, so the artwork stays where the eye expects it.

@@ -21,6 +21,10 @@ if [ ! -f Resources/AppIcon.icns ]; then
     scripts/make-icns.sh
 fi
 
+# The MediaRemote bridge is compiled here so it always matches the current source.
+clang -dynamiclib -fobjc-arc -Wno-objc-method-access -framework Foundation \
+    vendor/MediaRemoteBridge/bridge.m -o build/libMediaRemoteBridge.dylib
+
 swift build $SWIFT_BUILD_FLAGS -c release
 
 APP="build/NotchLite.app"
@@ -33,11 +37,14 @@ cp -R Resources/en.lproj "$APP/Contents/Resources/"
 cp "$ADAPTER/bin/mediaremote-adapter.pl" "$APP/Contents/Resources/"
 cp "$ADAPTER/LICENSE.txt" "$APP/Contents/Resources/ThirdPartyLicenses/mediaremote-adapter.txt"
 cp -R "$ADAPTER/build/MediaRemoteAdapter.framework" "$APP/Contents/Frameworks/"
+cp build/libMediaRemoteBridge.dylib "$APP/Contents/Frameworks/"
+cp vendor/MediaRemoteBridge/bridge.pl "$APP/Contents/Resources/"
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 
 codesign --force --sign - "$APP/Contents/Frameworks/MediaRemoteAdapter.framework"
+codesign --force --sign - "$APP/Contents/Frameworks/libMediaRemoteBridge.dylib"
 codesign --force --sign - "$APP"
 
 echo "Built $APP ($VERSION)"
