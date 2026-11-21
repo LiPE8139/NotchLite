@@ -32,16 +32,7 @@ enum HotkeyInjector {
     static func previous(_ bindings: Bindings) { press(bindings.previous) }
     static func next(_ bindings: Bindings) { press(bindings.next) }
 
-    /// Temporary diagnostic: records what the hotkey path actually saw.
-    private static func trace(_ line: String) {
-        let data = (line + "\n").data(using: .utf8)!
-        let url = URL(fileURLWithPath: "/tmp/notchlite-hotkey.log")
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() }
-        else { try? data.write(to: url) }
-    }
-
     private static func press(_ key: CGKeyCode) {
-        trace("press key=\(key) trusted=\(isTrusted)")
         guard isTrusted else {
             NSLog("[Hotkey] accessibility not granted; cannot drive the player")
             requestTrust()

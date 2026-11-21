@@ -28,7 +28,7 @@ Hover the notch to expand it; move away to collapse. The gear button opens a sma
 Requires macOS 14+ and Xcode command line tools. No dependencies to fetch.
 
 ```bash
-scripts/build-app.sh            # → build/NotchLite.app (ad-hoc signed)
+scripts/build-app.sh            # → build/NotchLite.app (signed, see below)
 scripts/build-app.sh --run      # build and launch
 scripts/install.sh              # build + install into /Applications + relaunch
 VERSION=0.2.0 scripts/build-app.sh
@@ -43,8 +43,17 @@ so packaging needs neither network access nor cmake.
 
 ## Permissions
 
-None. Reading Now Playing goes through `/usr/bin/perl` + the adapter framework, which macOS allows
-without asking; the shelf only stores paths (files stay where they are).
+Reading Now Playing needs no permission: it goes through `/usr/bin/perl` + a small bridge dylib,
+which macOS allows. Controlling other players does, because macOS only lets one app at a time own
+the playback slot:
+
+| Permission | Why | Covers |
+|---|---|---|
+| Automation | AppleScript talks to the player directly, bypassing the slot entirely | Apple Music, Spotify |
+| Accessibility | The player's own global shortcut is pressed on its behalf | NetEase (⌃⌥⌘S / ⌃⌥⌘A / ⌃⌥⌘D) |
+
+Transport falls back in this order: script → MediaRemote (only when the player holds the slot) →
+global shortcut. Nothing else is asked for — the shelf only stores paths.
 
 ## Notes
 

@@ -406,14 +406,13 @@ final class NowPlayingService {
         return Self.hotkeyBundles.contains(bundle)
     }
 
-    /// True when the transport can do something for the shown session by any route.
-    var canTransport: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
 
     func togglePlayPause() {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, isPlaying ? "pause" : "play")
-        } else if canControl {
+        } else if selected?.isActive == true {
+            // Only an elected player accepts MediaRemote commands; otherwise fall through.
             send(isPlaying ? 1 : 0, to: bundle)
         } else if Self.hotkeyBundles.contains(bundle) {
             HotkeyInjector.playPause(.netEase)
@@ -425,7 +424,7 @@ final class NowPlayingService {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, "next track")
-        } else if canControl {
+        } else if selected?.isActive == true {
             send(4, to: bundle)
         } else if Self.hotkeyBundles.contains(bundle) {
             HotkeyInjector.next(.netEase)
@@ -436,7 +435,7 @@ final class NowPlayingService {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, "previous track")
-        } else if canControl {
+        } else if selected?.isActive == true {
             send(5, to: bundle)
         } else if Self.hotkeyBundles.contains(bundle) {
             HotkeyInjector.previous(.netEase)
