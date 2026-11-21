@@ -55,6 +55,13 @@ final class NowPlayingService {
     @ObservationIgnored private var pinned = false
     @ObservationIgnored private var icons: [String: NSImage] = [:]
     @ObservationIgnored private var accents: [String: Color] = [:]
+    /// Last artwork seen for each player. Only the active session is ever re-read; the rest keep
+    /// whatever they last had, which is what makes switching back feel instant.
+    @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
+    @ObservationIgnored private var artworkAccent: [String: Color] = [:]
+    @ObservationIgnored private var artworkKey: [String: String] = [:]
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    @ObservationIgnored private var lastActiveID: String?
 
     var selected: MediaSource? {
         if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
@@ -78,12 +85,18 @@ final class NowPlayingService {
     /// Transport only works while the shown session is the one the system is driving.
     var canControl: Bool { selected?.isActive ?? false }
 
-    /// Album art is not available for secondary sessions yet, so fall back to the player's icon.
-    var artwork: NSImage? { selected.map { icon(for: $0.bundleID) } }
+    /// Cached artwork for this player, or its icon when the player never offered any (video
+    /// sources have none, and that is fine).
+    var artwork: NSImage? {
+        guard let selected else { return nil }
+        return artworkCache[selected.bundleID] ?? icon(for: selected.bundleID)
+    }
+
     var playerIcon: NSImage? { selected.map { icon(for: $0.bundleID) } }
+
     var accent: Color {
         guard let bundle = selected?.bundleID else { return .white }
-        return accents[bundle] ?? .white
+        return artworkAccent[bundle] ?? accents[bundle] ?? .white
     }
 
     func elapsed(at date: Date) -> TimeInterval { selected?.elapsed(at: date) ?? 0 }
@@ -244,9 +257,71 @@ final class NowPlayingService {
         lastTrackKey = trackKey(of: selected)
         updateActivity()
 
+        if let active = parsed.first(where: { $0.isActive }) {
+            // Re-entering the active slot is a good moment to re-read its artwork.
+            if lastActiveID != active.id { artworkKey[active.id] = nil }
+            lastActiveID = active.id
+            refreshArtwork(for: active)
+        } else {
+            lastActiveID = nil
+        }
+
         if lastTrackKey != previousKey, !lastTrackKey.isEmpty, isPlaying {
             onTrackChange?()
         }
+    }
+
+    /// Artwork is only pulled for the session the system is driving: the single-session API is the
+    /// one that exposes it, and the others keep their previous image until they become active.
+    private func refreshArtwork(for source: MediaSource) {
+        let key = "\(source.title)|\(source.artist)"
+        guard artworkKey[source.bundleID] != key, artworkTask == nil else { return }
+        artworkKey[source.bundleID] = key
+        artworkTask = Task { [weak self] in
+            let loaded = await Self.loadActiveArtwork()
+            guard let self else { return }
+            self.artworkTask = nil
+            guard let loaded else { return }
+            self.artworkCache[loaded.bundle] = loaded.image
+            if let tint = loaded.image.vibrantAverageColor {
+                self.artworkAccent[loaded.bundle] = Color(nsColor: tint)
+            }
+        }
+    }
+
+    /// One-shot read of the active session's artwork through the single-session adapter.
+    private static func loadActiveArtwork() async -> (bundle: String, image: NSImage)? {
+        guard let paths = AdapterPaths.locate() else { return nil }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+                process.arguments = [paths.script.path, paths.framework.path, "get"]
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
+                do { try process.run() } catch { continuation.resume(returning: nil); return }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let bundle = json["bundleIdentifier"] as? String,
+                      let base64 = json["artworkData"] as? String,
+                      let raw = Data(base64Encoded: base64),
+                      let image = thumbnail(from: raw, maxPixelSize: 256)
+                else { continuation.resume(returning: nil); return }
+                continuation.resume(returning: (bundle, image))
+            }
+        }
+    }
+
+    private nonisolated static func thumbnail(from data: Data, maxPixelSize: Int) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+              ] as CFDictionary) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 
     private func trackKey(of source: MediaSource?) -> String {
