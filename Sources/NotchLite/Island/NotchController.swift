@@ -297,8 +297,10 @@ final class NotchController {
         let interactive = overNotch || overControls
         if panel.ignoresMouseEvents != !interactive { panel.ignoresMouseEvents = !interactive }
 
-        // Dragging a file onto the notch still opens the shelf.
-        if overNotch, NSEvent.pressedMouseButtons & 1 != 0 {
+        // Dragging a file onto the notch opens the shelf. The trigger is deliberately much larger
+        // than the notch itself: the pointer is carrying something, so aiming precisely is not
+        // reasonable.
+        if NSEvent.pressedMouseButtons & 1 != 0, dragTargetRect().contains(mouse) {
             hideHoverControls()
             expand(tab: .shelf)
         }
@@ -321,6 +323,11 @@ final class NotchController {
         hoverControlsTask?.cancel()
         hoverControlsTask = nil
         if model.isHovering { model.isHovering = false }
+    }
+
+    /// Generous drop target around the notch, used only while a drag is in progress.
+    private func dragTargetRect() -> NSRect {
+        notchRect().insetBy(dx: -70, dy: -60)
     }
 
     /// The trailing wing — the side the waveform and the transport controls live on.
