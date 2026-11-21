@@ -89,8 +89,9 @@ final class NowPlayingService {
     var bundleID: String? { selected?.bundleID }
     var displayName: String { selected?.displayName ?? "" }
 
-    /// Only seeking is limited to the system's active session; playback commands address the app.
-    var canControl: Bool { selected?.isActive ?? false }
+    /// Whether the transport should be offered: scriptable players always, the rest only while they
+    /// hold the system's playback slot (MediaRemote drops commands for anything else).
+    var canControl: Bool { canScript || (selected?.isActive ?? false) }
 
     /// Cached artwork for this player, or its icon when the player never offered any (video
     /// sources have none, and that is fine).
@@ -379,23 +380,53 @@ final class NowPlayingService {
 
     // MARK: - Transport
 
-    /// Commands are addressed to the app itself, so a paused player can be resumed even while
-    /// another one owns the system's slot. Explicit play/pause is used instead of the toggle
-    /// command, which some players (NetEase) ignore.
+    /// Players with a scripting dictionary are driven through AppleScript instead: that talks to the
+    /// app directly, so it works even while another app owns the system's playback slot, which is
+    /// what limits MediaRemote commands.
+    private static let scriptableBundles: Set<String> = ["com.apple.Music", "com.spotify.client"]
+
+    var canScript: Bool {
+        guard let bundle = selected?.bundleID else { return false }
+        return Self.scriptableBundles.contains(bundle)
+    }
+
     func togglePlayPause() {
         guard let bundle = selected?.bundleID else { return }
-        send(isPlaying ? 1 : 0, to: bundle)
+        if Self.scriptableBundles.contains(bundle) {
+            runScript(bundle, isPlaying ? "pause" : "play")
+        } else {
+            send(isPlaying ? 1 : 0, to: bundle)
+        }
         updateActivity()
     }
 
     func next() {
         guard let bundle = selected?.bundleID else { return }
-        send(4, to: bundle)
+        if Self.scriptableBundles.contains(bundle) {
+            runScript(bundle, "next track")
+        } else {
+            send(4, to: bundle)
+        }
     }
 
     func previous() {
         guard let bundle = selected?.bundleID else { return }
-        send(5, to: bundle)
+        if Self.scriptableBundles.contains(bundle) {
+            runScript(bundle, "previous track")
+        } else {
+            send(5, to: bundle)
+        }
+    }
+
+    /// Sends one AppleScript command to the player, off the main thread.
+    private func runScript(_ bundle: String, _ command: String) {
+        let appName = bundle == "com.apple.Music" ? "Music" : "Spotify"
+        let source = "tell application \"\(appName)\" to \(command)"
+        DispatchQueue.global(qos: .userInitiated).async {
+            var error: NSDictionary?
+            NSAppleScript(source: source)?.executeAndReturnError(&error)
+            if let error { NSLog("[NowPlaying] apple script failed: \(error)") }
+        }
     }
 
     /// Seeking has no per-session API, so it only applies to the session the system is driving.
