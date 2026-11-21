@@ -87,11 +87,15 @@ private struct ScrubBar: View {
     let media: NowPlayingService
 
     @ViewState private var dragProgress: Double?
+    /// Where the user let go. Held until the reported position catches up, otherwise the bar snaps
+    /// back to the old spot for the ~400 ms the bridge needs to notice the seek.
+    @ViewState private var settleTarget: Double?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let elapsed = media.elapsed(at: context.date)
-            let progress = dragProgress ?? (media.duration > 0 ? elapsed / media.duration : 0)
+            let live = media.duration > 0 ? elapsed / media.duration : 0
+            let progress = dragProgress ?? settleTarget ?? live
             HStack(spacing: 8) {
                 Text(format(dragProgress.map { $0 * media.duration } ?? elapsed))
                 GeometryReader { geo in
@@ -105,7 +109,14 @@ private struct ScrubBar: View {
                     .gesture(DragGesture(minimumDistance: 0)
                         .onChanged { dragProgress = min(max($0.location.x / geo.size.width, 0), 1) }
                         .onEnded { _ in
-                            if let p = dragProgress { media.seek(to: p * media.duration) }
+                            if let p = dragProgress {
+                                settleTarget = p
+                                media.seek(to: p * media.duration)
+                                Task { @MainActor in
+                                    try? await Task.sleep(for: .seconds(1.2))
+                                    withAnimation(.easeOut(duration: 0.25)) { settleTarget = nil }
+                                }
+                            }
                             dragProgress = nil
                         })
                 }

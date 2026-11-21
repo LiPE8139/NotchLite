@@ -248,11 +248,12 @@ final class NowPlayingService {
 
     private func ingest(_ raw: [[String: Any]]) {
         let now = Date()
+        let previous = Dictionary(sources.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
         var parsed: [MediaSource] = []
         for item in raw {
             guard let bundle = item["bundle"] as? String, !bundle.isEmpty else { continue }
             let title = item["title"] as? String ?? ""
-            parsed.append(MediaSource(
+            var source = MediaSource(
                 bundleID: bundle,
                 displayName: item["name"] as? String ?? bundle,
                 pid: Int32(item["pid"] as? Int ?? 0),
@@ -264,7 +265,19 @@ final class NowPlayingService {
                 rate: item["rate"] as? Double ?? 0,
                 isPlaying: item["playing"] as? Bool ?? false,
                 isActive: item["active"] as? Bool ?? false,
-                reportedAt: now))
+                reportedAt: now)
+
+            // Keep extrapolating from the previous anchor while the report merely tracks playback;
+            // re-anchor only on a real jump (a seek) or a new track. Without this the bar nudges
+            // backwards every time a slightly stale position arrives.
+            if let old = previous[bundle], old.title == source.title, old.duration == source.duration {
+                let predicted = old.elapsed(at: now)
+                if abs(source.elapsed - predicted) < 1.5 {
+                    source.elapsed = old.elapsed
+                    source.reportedAt = old.reportedAt
+                }
+            }
+            parsed.append(source)
         }
 
         // The session the system is driving leads the list, like the system's own panel.
