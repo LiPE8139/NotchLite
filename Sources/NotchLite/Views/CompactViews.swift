@@ -91,24 +91,25 @@ private struct TransportControls: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            button("backward.fill", help: "Previous") { media.previous() }
-            button(media.isPlaying ? "pause.fill" : "play.fill", help: "Play or pause") {
+            button("backward.fill", size: 12, help: "Previous") { media.previous() }
+            // Play/pause is the primary action, so it reads a size larger than its neighbours.
+            button(media.isPlaying ? "pause.fill" : "play.fill", size: 16, help: "Play or pause") {
                 media.togglePlayPause()
             }
-            button("forward.fill", help: "Next") { media.next() }
+            button("forward.fill", size: 12, help: "Next") { media.next() }
         }
-        // The glyph for play/pause swaps without the row resizing.
-        .frame(width: 51)
-        // Commands only reach the app that holds the system's playback slot.
         .disabled(!media.canControl)
         .opacity(media.canControl ? 1 : 0.35)
     }
 
-    private func button(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    /// Every control gets the same 18 × 20 hit area, so the row stays optically even although the
+    /// glyphs differ in width — and nothing sits against the wing's edge where it would be clipped.
+    private func button(_ symbol: String, size: CGFloat,
+                        help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 15, height: 18)
+                .font(.system(size: size, weight: .semibold))
+                .frame(width: 18, height: 20)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
