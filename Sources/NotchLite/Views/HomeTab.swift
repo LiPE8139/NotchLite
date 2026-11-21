@@ -23,10 +23,7 @@ private struct MediaCard: View {
                             // NetEase cannot report the flag, so its heart only lights while the
                             // optimistic value is set right after the press.
                             let liked = media.isLoved
-                            Button {
-                                media.toggleLoved()
-                                if media.bundleID == "com.apple.Music" { media.probeMusicTrack() }
-                            } label: {
+                            Button { media.toggleLoved() } label: {
                                 Image(systemName: liked ? "heart.fill" : "heart")
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(liked ? Color.red : Color.white.opacity(0.4))
