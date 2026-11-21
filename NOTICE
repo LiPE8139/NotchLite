@@ -1,0 +1,18 @@
+NotchLite is derived from Islet.
+
+  Islet — https://github.com/ZNLong2203/Islet
+  Copyright (c) 2026 ZNLong2203
+  MIT License (see LICENSE)
+
+Changes in this fork: removed the notes scratchpad, focus timer, battery indicator,
+calendar integration and the language switcher; renamed the product and its bundle
+identity; vendored the media adapter so packaging needs no network access or cmake.
+
+---------------------------------------------------------------------------
+Third-party components
+
+MediaRemoteAdapter — https://github.com/ungive/mediaremote-adapter
+  Copyright (c) 2025 Jonas van den Berg
+  BSD 3-Clause License (see vendor/mediaremote-adapter/LICENSE.txt)
+  Vendored under vendor/mediaremote-adapter: the `mediaremote-adapter.pl` driver and
+  the prebuilt `MediaRemoteAdapter.framework` (universal, x86_64 + arm64).
