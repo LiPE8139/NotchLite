@@ -60,11 +60,32 @@ enum AppleMusicLove {
         return nil
     }
 
-    /// Presses the menu command. Returns false when the menu could not be found.
+    /// Presses the menu command when Music exposes one.
+    ///
+    /// Note: current Music versions only carry star ratings in the Rating submenu — there is no
+    /// Love item at all, and submenu contents are not materialised until a menu is opened. Rather
+    /// than flashing menus open on every press, this only looks at what is already visible.
     @discardableResult
     static func press() -> Bool {
         guard let item = loveMenuItem() else { return false }
         return AXUIElementPerformAction(item.element, kAXPressAction as CFString) == .success
+    }
+
+    /// First menu item anywhere in the menu bar whose title matches.
+    private static func firstMenuItem(titled names: [String]) -> AXUIElement? {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").first
+        else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        guard let menuBar = attribute(axApp, kAXMenuBarAttribute as String) else { return nil }
+
+        for barItem in children(menuBar as! AXUIElement) {
+            for menu in children(barItem) {
+                for item in children(menu) {
+                    if let name = title(item), names.contains(name) { return item }
+                }
+            }
+        }
+        return nil
     }
 
     /// Current loved state, from the menu item's wording.
