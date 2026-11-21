@@ -12,10 +12,12 @@ enum HotkeyInjector {
         let playPause: CGKeyCode
         let previous: CGKeyCode
         let next: CGKeyCode
+        let like: CGKeyCode
 
-        /// NetEase's global shortcuts as configured by the user: ⌃⌥⌘S, ⌃⌥⌘A, ⌃⌥⌘D.
-        /// Key codes: S = 1, A = 0, D = 2.
-        static let netEase = Bindings(playPause: 1, previous: 0, next: 2)
+        /// NetEase's global shortcuts as configured by the user:
+        /// ⌃⌥⌘S play/pause, ⌃⌥⌘A previous, ⌃⌥⌘D next, ⌃⌥⌘L like.
+        /// Key codes: A = 0, S = 1, D = 2, L = 37.
+        static let netEase = Bindings(playPause: 1, previous: 0, next: 2, like: 37)
     }
 
     private static let modifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
@@ -31,6 +33,7 @@ enum HotkeyInjector {
     static func playPause(_ bindings: Bindings) { press(bindings.playPause) }
     static func previous(_ bindings: Bindings) { press(bindings.previous) }
     static func next(_ bindings: Bindings) { press(bindings.next) }
+    static func like(_ bindings: Bindings) { press(bindings.like) }
 
     private static func press(_ key: CGKeyCode) {
         guard isTrusted else {

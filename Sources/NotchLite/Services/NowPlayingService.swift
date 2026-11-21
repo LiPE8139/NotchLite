@@ -424,12 +424,24 @@ final class NowPlayingService {
         return Self.scriptableBundles.contains(bundle)
     }
 
-    /// Only Apple Music exposes a per-track "loved" flag through its scripting dictionary.
-    var supportsLoved: Bool { bundleID == "com.apple.Music" }
+    /// Apple Music exposes a "loved" flag through scripting; NetEase only has a hotkey for it.
+    var supportsLike: Bool { bundleID == "com.apple.Music" || bundleID == "com.netease.163music" }
+
+    /// NetEase gives no way to read the flag, so its heart only reflects what we just pressed.
+    var showsLikedState: Bool { bundleID == "com.apple.Music" }
 
     /// Flips the heart for the current track, optimistically, then re-reads to confirm.
     func toggleLoved() {
-        guard supportsLoved else { return }
+        if bundleID == "com.netease.163music" {
+            HotkeyInjector.like(.netEase)
+            isLoved = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.2))
+                self.isLoved = false   // state is unknown; don't keep pretending
+            }
+            return
+        }
+        guard bundleID == "com.apple.Music" else { return }
         let target = !isLoved
         isLoved = target
         runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] _ in
@@ -439,7 +451,7 @@ final class NowPlayingService {
 
     /// Re-reads the flag; called on track changes and after a toggle.
     private func refreshLoved() {
-        guard supportsLoved else {
+        guard bundleID == "com.apple.Music" else {
             if isLoved { isLoved = false }
             return
         }
@@ -451,11 +463,43 @@ final class NowPlayingService {
         }
     }
 
+    /// One-off probe: logs what Music thinks the current track is, so a failing `loved` read can be
+    /// diagnosed without guessing.
+    func probeMusicTrack() {
+        let probe = """
+        tell application \"Music\"
+            set out to \"\"
+            try
+                set out to out & \"cls=\" & (class of current track as text) & \";\"
+            on error e
+                set out to out & \"clsErr=\" & e & \";\"
+            end try
+            try
+                set out to out & \"loved=\" & (loved of current track as text) & \";\"
+            on error e
+                set out to out & \"lovedErr=\" & e & \";\"
+            end try
+            try
+                set out to out & \"rating=\" & (rating of current track as text) & \";\"
+            on error e
+                set out to out & \"ratingErr=\" & e & \";\"
+            end try
+            return out
+        end tell
+        """
+        runAppleScript(probe) { _ in }
+    }
+
     private func runAppleScript(_ source: String,
                                 completion: @escaping (NSAppleEventDescriptor?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             var error: NSDictionary?
             let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+            let line = "src=\(source) result=\(result?.description ?? "nil") error=\(error?.description ?? "none")\n"
+            let url = URL(fileURLWithPath: "/tmp/notchlite-aa.log")
+            if let h = try? FileHandle(forWritingTo: url) {
+                h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+            } else { try? Data(line.utf8).write(to: url) }
             if let error { NSLog("[NowPlaying] applescript failed: \(error)") }
             DispatchQueue.main.async { completion(result) }
         }

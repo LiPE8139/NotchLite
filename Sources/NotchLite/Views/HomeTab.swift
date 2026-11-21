@@ -19,15 +19,19 @@ private struct MediaCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
-                        if media.supportsLoved {
-                            Button { media.toggleLoved() } label: {
-                                Image(systemName: media.isLoved ? "heart.fill" : "heart")
+                        if media.supportsLike {
+                            let liked = media.showsLikedState && media.isLoved
+                            Button {
+                                media.toggleLoved()
+                                if media.bundleID == "com.apple.Music" { media.probeMusicTrack() }
+                            } label: {
+                                Image(systemName: liked ? "heart.fill" : "heart")
                                     .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(media.isLoved ? Color.red : Color.white.opacity(0.4))
+                                    .foregroundStyle(liked ? Color.red : Color.white.opacity(0.4))
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .help(media.isLoved ? "Remove from loved" : "Love this track")
+                            .help(liked ? "Remove from loved" : "Love this track")
                         }
                     }
                     Text(media.artist.isEmpty ? (media.album.isEmpty ? "Not playing" : media.album) : media.artist)
