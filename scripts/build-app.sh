@@ -43,9 +43,21 @@ cp vendor/MediaRemoteBridge/bridge.pl "$APP/Contents/Resources/"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 
-codesign --force --sign - "$APP/Contents/Frameworks/MediaRemoteAdapter.framework"
-codesign --force --sign - "$APP/Contents/Frameworks/libMediaRemoteBridge.dylib"
-codesign --force --sign - "$APP"
+# A stable identity matters: macOS keys the Accessibility grant to the signature, so re-signing
+# with a different one (ad-hoc changes every build) silently revokes it. Prefer a real developer
+# identity, fall back to ad-hoc when none is available.
+IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(.*\)"/\1/p' | head -1)}"
+if [ -n "$IDENTITY" ]; then
+    echo "Signing as: $IDENTITY"
+    SIGN=(--sign "$IDENTITY")
+else
+    echo "Signing ad-hoc (Accessibility will need re-granting after every build)"
+    SIGN=(--sign -)
+fi
+
+codesign --force "${SIGN[@]}" "$APP/Contents/Frameworks/MediaRemoteAdapter.framework"
+codesign --force "${SIGN[@]}" "$APP/Contents/Frameworks/libMediaRemoteBridge.dylib"
+codesign --force "${SIGN[@]}" "$APP"
 
 echo "Built $APP ($VERSION)"
 
