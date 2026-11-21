@@ -22,6 +22,8 @@ final class NotchController {
     private lazy var dropZone = DropZoneController(shelf: model.shelf)
     /// Set while another app owns the screen (a fullscreen video): the island steps aside.
     private var isHiddenForFullscreen = false
+    /// Set when the shelf was opened by a drag; it then stays open until the mouse is released.
+    private var expandedForDrag = false
     private lazy var fullscreen = FullscreenMonitor { [weak self] in self?.screen }
     private var shake = ShakeDetector()
     private var shakeCooldownUntil: TimeInterval = 0
@@ -240,6 +242,7 @@ final class NotchController {
         guard !isHiddenForFullscreen else { return }
         guard let screen else { return }
         let mouse = NSEvent.mouseLocation
+        if NSEvent.pressedMouseButtons & 1 == 0 { expandedForDrag = false }
 
         guard model.isExpanded else {
             handleCollapsedMouse(mouse, on: screen)
@@ -298,9 +301,10 @@ final class NotchController {
         if panel.ignoresMouseEvents != !interactive { panel.ignoresMouseEvents = !interactive }
 
         // Dragging a file onto the notch opens the shelf. The trigger is deliberately much larger
-        // than the notch itself: the pointer is carrying something, so aiming precisely is not
-        // reasonable.
-        if NSEvent.pressedMouseButtons & 1 != 0, dragTargetRect().contains(mouse) {
+        // than the notch itself, so it only fires when the pointer is actually carrying something —
+        // otherwise selecting text or moving a window near the notch would pop the shelf open.
+        if NSEvent.pressedMouseButtons & 1 != 0, dragTargetRect().contains(mouse), isCarryingDragPayload {
+            expandedForDrag = true
             hideHoverControls()
             expand(tab: .shelf)
         }
@@ -325,6 +329,14 @@ final class NotchController {
         if model.isHovering { model.isHovering = false }
     }
 
+    /// True when the pointer is carrying something the shelf could accept: the drag pasteboard has
+    /// been filled since this mouse-down.
+    private var isCarryingDragPayload: Bool {
+        let pasteboard = NSPasteboard(name: .drag)
+        guard pasteboard.changeCount != pressDragChangeCount else { return false }
+        return pasteboard.canReadObject(forClasses: [NSURL.self, NSImage.self, NSString.self], options: nil)
+    }
+
     /// Generous drop target around the notch, used only while a drag is in progress.
     private func dragTargetRect() -> NSRect {
         notchRect().insetBy(dx: -70, dy: -60)
@@ -343,6 +355,7 @@ final class NotchController {
         #if DEBUG
         if debugPinned { return true }
         #endif
+        if expandedForDrag && NSEvent.pressedMouseButtons & 1 != 0 { return true }
         return openedByKeyboard || isMenuOpen || model.isMenuOpen || model.isDraggingOut || model.isDropTargeted
     }
 
