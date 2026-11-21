@@ -13,11 +13,12 @@ enum HotkeyInjector {
         let previous: CGKeyCode
         let next: CGKeyCode
 
-        /// NetEase's factory global shortcuts: ⌥⌘Space, ⌥⌘←, ⌥⌘→ (key codes 49, 123, 124).
-        static let netEase = Bindings(playPause: 49, previous: 123, next: 124)
+        /// NetEase's global shortcuts as configured by the user: ⌃⌥⌘S, ⌃⌥⌘A, ⌃⌥⌘D.
+        /// Key codes: S = 1, A = 0, D = 2.
+        static let netEase = Bindings(playPause: 1, previous: 0, next: 2)
     }
 
-    private static let modifiers: CGEventFlags = [.maskAlternate, .maskCommand]
+    private static let modifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
