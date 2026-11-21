@@ -84,8 +84,11 @@ static double num(id info, NSString *key) {
     return [v respondsToSelector:@selector(doubleValue)] ? [v doubleValue] : 0;
 }
 
-/// Bundle id of the session the system currently routes commands to, or nil.
-static NSString *activeBundleID(void) {
+/// The session the system currently routes commands to, or nil.
+///
+/// It is not always part of MRMediaRemoteGetNowPlayingClients — a player that stopped but still
+/// owns the slot drops out of that list — so it is merged in separately.
+static id fetchActiveClient(void) {
     if (!pGetActive) return nil;
     __block id client = nil;
     dispatch_semaphore_t sem = dispatch_semaphore_create(0);
@@ -94,7 +97,7 @@ static NSString *activeBundleID(void) {
         dispatch_semaphore_signal(sem);
     });
     dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
-    return [client valueForKey:@"bundleIdentifier"];
+    return client;
 }
 
 /// One JSON line describing every session, or an empty list when nothing is playing.
@@ -102,17 +105,28 @@ static NSString *buildState(void) {
     NSMutableString *json = [NSMutableString stringWithString:@"{\"sources\":["];
     NSArray *clients = fetchClients();
     id origin = pGetOrigin();
-    NSString *active = activeBundleID();
+    id activeClient = fetchActiveClient();
+    NSString *active = [activeClient valueForKey:@"bundleIdentifier"];
+
+    NSMutableArray *all = [NSMutableArray arrayWithArray:clients ?: @[]];
+    if (activeClient && active.length) {
+        BOOL present = NO;
+        for (id c in all) {
+            if ([[c valueForKey:@"bundleIdentifier"] isEqualToString:active]) { present = YES; break; }
+        }
+        if (!present) [all addObject:activeClient];
+    }
     BOOL first = YES;
 
-    for (id client in clients) {
+    for (id client in all) {
         NSString *bundle = [client valueForKey:@"bundleIdentifier"];
         if (bundle.length == 0) continue;
         NSDictionary *info = fetchInfo(client, origin);
         if (info.count == 0) continue;
 
-        NSString *title = str(info, @"kMRMediaRemoteNowPlayingInfoTitle");
-        if (title.length == 0) continue;
+        // A session with no metadata still counts: it may be the one the system routes commands
+        // to, and dropping it would make every other session look un-driven.
+        NSString *title = str(info, @"kMRMediaRemoteNowPlayingInfoTitle") ?: @"";
 
         if (!first) [json appendString:@","];
         first = NO;

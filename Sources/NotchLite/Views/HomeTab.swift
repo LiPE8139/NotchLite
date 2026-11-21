@@ -18,7 +18,7 @@ private struct MediaCard: View {
                 artwork
                 VStack(alignment: .leading, spacing: 4) {
                     MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
-                    Text(media.artist.isEmpty ? media.album : media.artist)
+                    Text(media.artist.isEmpty ? (media.album.isEmpty ? "Not playing" : media.album) : media.artist)
                         .font(.system(size: 12.5))
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)

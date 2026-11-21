@@ -63,7 +63,10 @@ final class NowPlayingService {
 
     // MARK: - What the views read
 
-    var title: String { selected?.title ?? "" }
+    var title: String {
+        guard let selected else { return "" }
+        return selected.title.isEmpty ? selected.displayName : selected.title
+    }
     var artist: String { selected?.artist ?? "" }
     var album: String { selected?.album ?? "" }
     var duration: TimeInterval { selected?.duration ?? 0 }
@@ -204,8 +207,8 @@ final class NowPlayingService {
         let now = Date()
         var parsed: [MediaSource] = []
         for item in raw {
-            guard let bundle = item["bundle"] as? String, !bundle.isEmpty,
-                  let title = item["title"] as? String, !title.isEmpty else { continue }
+            guard let bundle = item["bundle"] as? String, !bundle.isEmpty else { continue }
+            let title = item["title"] as? String ?? ""
             parsed.append(MediaSource(
                 bundleID: bundle,
                 displayName: item["name"] as? String ?? bundle,
