@@ -453,17 +453,17 @@ final class NowPlayingService {
         guard bundle == "com.apple.Music" else { return }
         let target = !(lovedState[bundle] ?? false)
         lovedState[bundle] = target
-        runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] result in
-            guard let self else { return }
-            if result == nil {
-                // Streaming ("shared") tracks reject `loved`; the star rating is the writable
-                // equivalent there, so fall back to it.
-                self.runAppleScript("tell application \"Music\" to set rating of current track to \(target ? 100 : 0)") { _ in
-                    self.refreshLoved()
-                }
-            } else {
+        // The menu command handles any track type; the scripting property only covers library items.
+        if AppleMusicLove.press() {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(400))
                 self.refreshLoved()
             }
+            return
+        }
+        runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] result in
+            guard let self else { return }
+            if result != nil { self.refreshLoved() }
         }
     }
 
@@ -471,20 +471,18 @@ final class NowPlayingService {
     private func refreshLoved() {
         guard bundleID == "com.apple.Music" else { return }
         let bundle = "com.apple.Music"
+        // The menu item's wording reflects the real state for every kind of track.
+        if let loved = AppleMusicLove.isLoved() {
+            lovedState[bundle] = loved
+            return
+        }
+        // No Accessibility (or the menu moved): fall back to the scripting property, which at least
+        // covers library tracks.
         runAppleScript("tell application \"Music\" to get loved of current track") { [weak self] descriptor in
             guard let self else { return }
-            // 'bool' — the descriptor type Apple events use for a boolean result.
             let typeBoolean = FourCharCode(0x626F_6F6C)
-            if let descriptor, descriptor.descriptorType == typeBoolean {
-                self.lovedState[bundle] = descriptor.booleanValue
-                return
-            }
-            // Streaming tracks have no `loved`; mirror the star rating instead.
-            self.runAppleScript("tell application \"Music\" to get rating of current track") { rating in
-                let typeSInt32 = FourCharCode(0x6C6F6E67)   // 'long'
-                guard let rating, rating.descriptorType == typeSInt32 else { return }
-                self.lovedState[bundle] = rating.int32Value >= 100
-            }
+            guard let descriptor, descriptor.descriptorType == typeBoolean else { return }
+            self.lovedState[bundle] = descriptor.booleanValue
         }
     }
 
