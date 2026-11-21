@@ -69,8 +69,14 @@ final class NowPlayingService {
     /// A track that asked for artwork while a fetch was already running.
     @ObservationIgnored private var pendingArtwork: MediaSource?
     @ObservationIgnored private var lastActiveID: String?
-    /// Apple Music's "loved" flag for the current track.
-    private(set) var isLoved = false
+    /// Like state per player. Keyed by bundle id: each app has its own flag, and switching sources
+    /// must not carry the previous one's heart along.
+    private var lovedState: [String: Bool] = [:]
+
+    var isLoved: Bool {
+        guard let bundle = selected?.bundleID else { return false }
+        return lovedState[bundle] ?? false
+    }
 
     var selected: MediaSource? {
         if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
@@ -148,6 +154,7 @@ final class NowPlayingService {
         pinned = true
         selectedID = sources[next].id
         lastTrackKey = trackKey(of: sources[next])
+        refreshLoved()
         updateActivity()
     }
 
@@ -156,6 +163,7 @@ final class NowPlayingService {
         pinned = true
         selectedID = id
         lastTrackKey = trackKey(of: match)
+        refreshLoved()
         updateActivity()
     }
 
@@ -432,18 +440,19 @@ final class NowPlayingService {
 
     /// Flips the heart for the current track, optimistically, then re-reads to confirm.
     func toggleLoved() {
-        if bundleID == "com.netease.163music" {
+        guard let bundle = bundleID else { return }
+        if bundle == "com.netease.163music" {
             HotkeyInjector.like(.netEase)
-            isLoved = true
+            lovedState[bundle] = true
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(1.2))
-                self.isLoved = false   // state is unknown; don't keep pretending
+                self.lovedState[bundle] = false   // state is unknown; don't keep pretending
             }
             return
         }
-        guard bundleID == "com.apple.Music" else { return }
-        let target = !isLoved
-        isLoved = target
+        guard bundle == "com.apple.Music" else { return }
+        let target = !(lovedState[bundle] ?? false)
+        lovedState[bundle] = target
         runAppleScript("tell application \"Music\" to set loved of current track to \(target ? "true" : "false")") { [weak self] result in
             guard let self else { return }
             if result == nil {
@@ -460,24 +469,21 @@ final class NowPlayingService {
 
     /// Re-reads the flag; called on track changes and after a toggle.
     private func refreshLoved() {
-        guard bundleID == "com.apple.Music" else {
-            if isLoved { isLoved = false }
-            return
-        }
+        guard bundleID == "com.apple.Music" else { return }
+        let bundle = "com.apple.Music"
         runAppleScript("tell application \"Music\" to get loved of current track") { [weak self] descriptor in
             guard let self else { return }
             // 'bool' — the descriptor type Apple events use for a boolean result.
             let typeBoolean = FourCharCode(0x626F_6F6C)
-            let typeSInt32 = FourCharCode(0x6C6F6E67)   // 'long'
-            let typeUInt32 = FourCharCode(0x6C6F6E67)
             if let descriptor, descriptor.descriptorType == typeBoolean {
-                self.isLoved = descriptor.booleanValue
+                self.lovedState[bundle] = descriptor.booleanValue
                 return
             }
             // Streaming tracks have no `loved`; mirror the star rating instead.
             self.runAppleScript("tell application \"Music\" to get rating of current track") { rating in
-                guard let rating, rating.descriptorType == typeSInt32 || rating.descriptorType == typeUInt32 else { return }
-                self.isLoved = rating.int32Value >= 100
+                let typeSInt32 = FourCharCode(0x6C6F6E67)   // 'long'
+                guard let rating, rating.descriptorType == typeSInt32 else { return }
+                self.lovedState[bundle] = rating.int32Value >= 100
             }
         }
     }
