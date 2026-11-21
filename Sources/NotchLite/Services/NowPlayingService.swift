@@ -89,9 +89,13 @@ final class NowPlayingService {
     var bundleID: String? { selected?.bundleID }
     var displayName: String { selected?.displayName ?? "" }
 
-    /// Whether the transport should be offered: scriptable players always, the rest only while they
-    /// hold the system's playback slot (MediaRemote drops commands for anything else).
+    /// Whether the transport should be offered: scriptable players always, players we can drive by
+    /// hotkey always, the rest only while they hold the system's playback slot.
     var canControl: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
+
+    /// Seeking needs either a scripting dictionary or the playback slot; the hotkey route has no
+    /// notion of a position.
+    var canSeek: Bool { canScript || (selected?.isActive ?? false) }
 
     /// Cached artwork for this player, or its icon when the player never offered any (video
     /// sources have none, and that is fine).
@@ -453,10 +457,15 @@ final class NowPlayingService {
         }
     }
 
-    /// Seeking has no per-session API, so it only applies to the session the system is driving.
+    /// Seeking: scriptable players are positioned directly, everything else goes through
+    /// MediaRemote, which only accepts it for the session holding the playback slot.
     func seek(to seconds: TimeInterval) {
-        guard canControl, let adapter = Self.adapterPaths() else { return }
-        runAdapter(adapter, ["seek", String(Int(seconds * 1_000_000))])
+        guard let bundle = selected?.bundleID else { return }
+        if Self.scriptableBundles.contains(bundle) {
+            runScript(bundle, String(format: "set player position to %.2f", seconds))
+        } else if selected?.isActive == true, let adapter = Self.adapterPaths() {
+            runAdapter(adapter, ["seek", String(Int(seconds * 1_000_000))])
+        }
     }
 
     private func send(_ command: Int, to bundle: String) {

@@ -110,8 +110,8 @@ private struct ScrubBar: View {
                         })
                 }
                 .frame(height: 12)
-                // No per-session seek API yet, so dragging only applies to the active session.
-                .allowsHitTesting(media.canControl)
+                // Seeking only works where we can actually set a position.
+                .allowsHitTesting(media.canSeek)
                 Text("-" + format(max(0, media.duration - elapsed)))
             }
             .font(.system(size: 10, weight: .medium).monospacedDigit())
