@@ -89,7 +89,7 @@ final class NowPlayingService {
     var bundleID: String? { selected?.bundleID }
     var displayName: String { selected?.displayName ?? "" }
 
-    /// Transport only works while the shown session is the one the system is driving.
+    /// Only seeking is limited to the system's active session; playback commands address the app.
     var canControl: Bool { selected?.isActive ?? false }
 
     /// Cached artwork for this player, or its icon when the player never offered any (video
@@ -379,8 +379,8 @@ final class NowPlayingService {
 
     // MARK: - Transport
 
-    /// Commands address the shown session directly, so a paused player can be resumed even while
-    /// another one owns the system's active slot. Explicit play/pause is used instead of the toggle
+    /// Commands are addressed to the app itself, so a paused player can be resumed even while
+    /// another one owns the system's slot. Explicit play/pause is used instead of the toggle
     /// command, which some players (NetEase) ignore.
     func togglePlayPause() {
         guard let bundle = selected?.bundleID else { return }

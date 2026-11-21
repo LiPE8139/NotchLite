@@ -10,14 +10,14 @@ typedef void (*GetClientsFn)(dispatch_queue_t, void (^)(NSArray *));
 typedef id   (*GetOriginFn)(void);
 typedef void (*InfoFn)(id, id, id, dispatch_queue_t, void (^)(id));
 typedef void (*GetActiveFn)(dispatch_queue_t, void (^)(id));
-typedef void (*SendToClientFn)(int, id, id, id, id, id, void (^)(void));
+typedef void (*SendToAppFn)(int, id, id, id, id, id, void (^)(void));
 
 static void *MR = NULL;
 static GetClientsFn pGetClients;
 static GetOriginFn  pGetOrigin;
 static InfoFn       pGetInfo;
 static GetActiveFn  pGetActive;
-static SendToClientFn pSendToClient;
+static SendToAppFn   pSendToApp;
 
 static BOOL loadMediaRemote(void) {
     if (MR) return YES;
@@ -27,7 +27,7 @@ static BOOL loadMediaRemote(void) {
     pGetOrigin  = (GetOriginFn)dlsym(MR, "MRMediaRemoteGetLocalOrigin");
     pGetInfo    = (InfoFn)dlsym(MR, "MRMediaRemoteGetNowPlayingInfoForClient");
     pGetActive  = (GetActiveFn)dlsym(MR, "MRMediaRemoteGetNowPlayingClient");
-    pSendToClient = (SendToClientFn)dlsym(MR, "MRMediaRemoteSendCommandToClient");
+    pSendToApp = (SendToAppFn)dlsym(MR, "MRMediaRemoteSendCommandToApp");
     return pGetClients && pGetOrigin && pGetInfo;
 }
 
@@ -159,18 +159,14 @@ static NSString *buildState(void) {
     return json;
 }
 
-/// Sends a transport command to one specific session, whatever the system considers active.
+/// Sends a transport command straight to one app, addressed by bundle id.
 ///
-/// The argument order was verified against the framework: (command, options, origin, client, …).
-/// Explicit play/pause beats the toggle command, which some players (NetEase) ignore.
-static void sendCommandToClient(NSString *bundle, int command) {
-    if (!pSendToClient || bundle.length == 0) return;
-    id client = nil;
-    for (id c in fetchClients()) {
-        if ([[c valueForKey:@"bundleIdentifier"] isEqualToString:bundle]) { client = c; break; }
-    }
-    if (!client) return;
-    pSendToClient(command, nil, pGetOrigin(), client, nil, nil, ^{});
+/// `MRMediaRemoteSendCommandToApp` resolves the target itself, so this works even when the app does
+/// not hold the system's playback slot — unlike sending to a client, which the daemon drops in that
+/// case. Signature verified against the framework: (command, options, origin, bundleID, …).
+static void sendCommandToApp(NSString *bundle, int command) {
+    if (!pSendToApp || bundle.length == 0) return;
+    pSendToApp(command, nil, pGetOrigin(), bundle, nil, nil, ^{});
 }
 
 /// Reads `{"bundle":"…","cmd":N}` lines from stdin, so the app can drive other sessions without
@@ -193,7 +189,7 @@ static void drainCommands(void) {
         NSString *bundle = command[@"bundle"];
         NSNumber *cmd = command[@"cmd"];
         if ([bundle isKindOfClass:[NSString class]] && [cmd isKindOfClass:[NSNumber class]]) {
-            sendCommandToClient(bundle, cmd.intValue);
+            sendCommandToApp(bundle, cmd.intValue);
         }
     }
 }
