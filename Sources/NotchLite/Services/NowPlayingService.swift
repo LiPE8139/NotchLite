@@ -93,9 +93,16 @@ final class NowPlayingService {
     /// hotkey always, the rest only while they hold the system's playback slot.
     var canControl: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
 
-    /// Seeking needs either a scripting dictionary or the playback slot; the hotkey route has no
-    /// notion of a position.
-    var canSeek: Bool { canScript || (selected?.isActive ?? false) }
+    /// Players that answered "Failed to seek": NetEase rejects it even when it holds the slot, so
+    /// the progress bar must not pretend otherwise.
+    private(set) var seekUnsupported: Set<String> = ["com.netease.163music"]
+
+    /// Seeking needs either a scripting dictionary or a player that actually accepts remote seeks.
+    var canSeek: Bool {
+        guard let selected else { return false }
+        if canScript { return true }
+        return selected.isActive && !seekUnsupported.contains(selected.bundleID)
+    }
 
     /// Cached artwork for this player, or its icon when the player never offered any (video
     /// sources have none, and that is fine).
@@ -463,8 +470,26 @@ final class NowPlayingService {
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, String(format: "set player position to %.2f", seconds))
-        } else if selected?.isActive == true, let adapter = Self.adapterPaths() {
-            runAdapter(adapter, ["seek", String(Int(seconds * 1_000_000))])
+            return
+        }
+        guard selected?.isActive == true, let adapter = Self.adapterPaths() else { return }
+        // Watch the exit status: a player that refuses remote seeks is remembered, so the bar
+        // stops accepting drags instead of silently doing nothing.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+            process.arguments = [adapter.script.path, adapter.framework.path,
+                                 "seek", String(Int(seconds * 1_000_000))]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do { try process.run() } catch { return }
+            process.waitUntilExit()
+            guard process.terminationStatus != 0 else { return }
+            DispatchQueue.main.async {
+                guard !self.seekUnsupported.contains(bundle) else { return }
+                self.seekUnsupported.insert(bundle)
+                NSLog("[NowPlaying] %@ does not accept remote seeks", bundle)
+            }
         }
     }
 
