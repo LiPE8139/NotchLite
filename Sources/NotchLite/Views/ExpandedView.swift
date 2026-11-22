@@ -122,7 +122,7 @@ private struct SourceChip: View {
                 .opacity(selected ? 1 : (hovering ? 0.85 : 0.45))
                 // Kept small enough to stay inside the strip's 7pt inset and the row's padding,
                 // so it never gets clipped by the panel edge.
-                .shadow(color: selected ? accent.opacity(0.5) : (hovering ? accent.opacity(0.25) : .clear),
+                .shadow(color: selected ? accent.opacity(0.6) : (hovering ? accent.opacity(0.3) : .clear),
                         radius: selected ? 3 : 2)
                 .padding(2)
                 .contentShape(Rectangle())
