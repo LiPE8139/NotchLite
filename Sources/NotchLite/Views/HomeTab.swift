@@ -20,8 +20,10 @@ private struct MediaCard: View {
 
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
-    /// The cover actually on screen; the new one is dropped in at the bottom of the shrink.
+    /// The cover actually on screen; the new one is faded in over it at the bottom of the shrink.
     @ViewState private var shownArtwork: NSImage?
+    @ViewState private var incomingArtwork: NSImage?
+    @ViewState private var incomingOpacity: Double = 0
     @ViewState private var swapPulse: CGFloat = 1
 
     var body: some View {
@@ -91,18 +93,34 @@ private struct MediaCard: View {
     }
 
     private var artwork: some View {
-        ArtworkView(image: shownArtwork ?? media.artwork, size: MediaCard.coverSize, corner: 22)
-            // Squash, swap at the smallest point, spring back: the new cover never appears while
-            // the tile is at full size.
-            .scaleEffect(swapPulse)
-            .onChange(of: media.artworkIdentity) { _, _ in
-                withAnimation(.easeIn(duration: 0.15)) { swapPulse = 0.86 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    shownArtwork = media.artwork
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { swapPulse = 1 }
+        ZStack {
+            ArtworkView(image: shownArtwork ?? media.artwork, size: MediaCard.coverSize, corner: 22)
+            if let incoming = incomingArtwork {
+                ArtworkView(image: incoming, size: MediaCard.coverSize, corner: 22)
+                    .opacity(incomingOpacity)
+            }
+        }
+        // Shrink, dissolve the old cover into the new one at the smallest point, then spring back.
+        .scaleEffect(swapPulse)
+        .onChange(of: media.artworkIdentity) { _, _ in
+            let next = media.artwork
+            withAnimation(.easeIn(duration: 0.15)) { swapPulse = 0.86 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                incomingArtwork = next
+                incomingOpacity = 0
+                // One tick so the incoming tile is laid out at 0 before it fades in.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    withAnimation(.easeInOut(duration: 0.22)) { incomingOpacity = 1 }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                        shownArtwork = next
+                        incomingArtwork = nil
+                        incomingOpacity = 0
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { swapPulse = 1 }
+                    }
                 }
             }
-            .onAppear { shownArtwork = media.artwork }
+        }
+        .onAppear { shownArtwork = media.artwork }
             // Hovering lifts the cover and glows in the album's own colour.
             .shadow(color: media.accent.opacity(artworkHovering ? 0.85 : 0.55),
                     radius: artworkHovering ? 26 : 16)
