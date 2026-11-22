@@ -294,9 +294,9 @@ struct SwappingCover: View {
     @ViewState private var coverScale: CGFloat = 1
     @ViewState private var awaitingCover = false
     @ViewState private var breathing = false
-    /// Held-down squash and the sway that follows on release.
+    /// Held-down squash and the iOS-style wobble that follows on release.
     @ViewState private var pressScale: CGFloat = 1
-    @ViewState private var sway: CGFloat = 0
+    @ViewState private var tilt: Double = 0
 
     var body: some View {
         ZStack {
@@ -307,8 +307,8 @@ struct SwappingCover: View {
             }
         }
         .scaleEffect(coverScale * (breathing ? 1.023 : 1) * pressScale)
-        // Amplitude follows the tile, so the little wing cover sways as far as the big one looks.
-        .offset(x: sway * (size / 112))
+        // Rotating about the centre, the way iOS icons wiggle, rather than sliding sideways.
+        .rotationEffect(.degrees(tilt))
         .onChange(of: media.playControlPressed) { _, pressed in
             if pressed {
                 withAnimation(.easeOut(duration: 0.09)) { pressScale = 0.93 }
@@ -326,12 +326,12 @@ struct SwappingCover: View {
         .onAppear { shownArtwork = media.artwork }
     }
 
-    /// Left-right sway that dies down: a decaying zig-zag rather than a single bounce.
+    /// iOS-style wobble: a few decaying rotations around the centre, then rest.
     private func startSway() {
-        let steps: [CGFloat] = [7, -6, 4.5, -3, 1.5, 0]
+        let steps: [Double] = [4, -4, 3, -2.2, 1.4, -0.7, 0]
         for (index, value) in steps.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.055 * Double(index)) {
-                withAnimation(.easeInOut(duration: 0.055)) { sway = value }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07 * Double(index)) {
+                withAnimation(.easeInOut(duration: 0.07)) { tilt = value }
             }
         }
     }
