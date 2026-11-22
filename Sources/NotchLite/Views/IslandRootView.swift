@@ -3,10 +3,11 @@ import SwiftUI
 struct IslandRootView: View {
     let model: IslandModel
 
-    private let spring = Animation.spring(response: 0.42, dampingFraction: 0.78)
-    /// Size changes must not overshoot: a bouncy height briefly leaves the bottom edge of the
-    /// shape visible below the content.
-    private let resize = Animation.spring(response: 0.42, dampingFraction: 1.0)
+    /// Geometry moves on a smooth curve rather than a spring: any overshoot swings the shape's
+    /// bottom edge past its resting place, which reads as the notch edge flickering.
+    private let geometry = Animation.smooth(duration: 0.3)
+    /// Content still gets a little life.
+    private let content = Animation.spring(response: 0.4, dampingFraction: 0.85)
 
     var body: some View {
         let presentation = model.presentation
@@ -34,10 +35,10 @@ struct IslandRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
-        .animation(spring, value: presentation)
-        .animation(resize, value: model.islandSize)
-        .animation(resize, value: model.islandOffset)
-        .animation(spring, value: model.tab)
+        .animation(geometry, value: presentation)
+        .animation(geometry, value: model.islandSize)
+        .animation(geometry, value: model.islandOffset)
+        .animation(content, value: model.tab)
         .environment(\.colorScheme, .dark)
     }
 
