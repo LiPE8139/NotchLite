@@ -116,16 +116,16 @@ private struct SourceChip: View {
                 .resizable()
                 .frame(width: 16, height: 16)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .opacity(selected ? 1 : (hovering ? 0.8 : 0.45))
+                .opacity(selected ? 1 : (hovering ? 0.85 : 0.45))
                 .padding(2)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        // Size and brightness only: a glow spills past the icon and gets clipped by the panel
-        // edge and the scroll viewport.
-        .scaleEffect(selected ? 1.18 : (hovering ? 1.1 : 1))
-        .animation(.spring(response: 0.3, dampingFraction: 0.55), value: selected)
+        // Selection only brightens: scaling the chosen icon kept it colliding with its neighbours.
+        // Hover still grows slightly, and the press squash is the click feedback.
+        .scaleEffect(hovering ? 1.1 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
+        .animation(.easeOut(duration: 0.15), value: selected)
         .onHover { hovering = $0 }
         .help(source.displayName)
     }
@@ -142,15 +142,21 @@ private struct SourceStrip<Content: View>: View {
 
     private var chipWidth: CGFloat { 20 }
     private var spacing: CGFloat { 3 }
-    private var visible: Int { min(count, 3) }
-    private var contentWidth: CGFloat {
+    /// Keeps the end icons clear of the edge fades.
+    private var inset: CGFloat { 7 }
+    private var chipsWidth: CGFloat {
         CGFloat(count) * chipWidth + CGFloat(max(0, count - 1)) * spacing
+    }
+    private var contentWidth: CGFloat { chipsWidth + inset * 2 }
+    /// Three chips wide once it scrolls; sized to its content when everything fits.
+    private var width: CGFloat {
+        count <= 3 ? contentWidth
+                   : CGFloat(3) * chipWidth + 2 * spacing + inset * 2
     }
 
     var body: some View {
-        let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
-
         content
+            .padding(.horizontal, inset)
             .fixedSize()
             .offset(x: model.stripScroll)
             .frame(width: width, alignment: .leading)
@@ -178,16 +184,20 @@ private struct SourceStrip<Content: View>: View {
     /// Puts the chosen player in the middle of the strip.
     private func centre(on id: String?, viewport: CGFloat) {
         guard let id, let index = model.media.sources.firstIndex(where: { $0.id == id }) else { return }
-        let chipCentre = CGFloat(index) * (chipWidth + spacing) + chipWidth / 2
+        let chipCentre = inset + CGFloat(index) * (chipWidth + spacing) + chipWidth / 2
         let target = viewport / 2 - chipCentre
         withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
             model.stripScroll = min(0, max(-model.stripMaxScroll, target))
         }
     }
 
-    /// A soft right edge hints that more players are waiting.
+    /// Soft edges on both sides hint that the row continues past the visible three.
     private var edgeFade: some View {
         HStack(spacing: 0) {
+            if count > 3 {
+                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 7)
+            }
             Rectangle()
             if count > 3 {
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
