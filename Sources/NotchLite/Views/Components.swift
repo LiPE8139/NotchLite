@@ -342,10 +342,11 @@ struct SwappingCover: View {
 
     /// iOS-style wobble: a few decaying rotations around the centre, then rest.
     private func startSway() {
-        let steps: [Double] = [3.5, -3.5, 2.6, -1.9, 1.2, -0.6, 0]
+        // 7 steps of 45ms: 3° either way, settling in about 320ms.
+        let steps: [Double] = [3, -3, 2.2, -1.6, 1, -0.5, 0]
         for (index, value) in steps.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05 * Double(index)) {
-                withAnimation(.easeInOut(duration: 0.05)) { tilt = value }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.045 * Double(index)) {
+                withAnimation(.easeInOut(duration: 0.045)) { tilt = value }
             }
         }
     }
