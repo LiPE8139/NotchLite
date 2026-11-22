@@ -117,6 +117,10 @@ private struct SourceChip: View {
                 .frame(width: 16, height: 16)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .opacity(selected ? 1 : (hovering ? 0.85 : 0.45))
+                // Kept small enough to stay inside the strip's 7pt inset and the row's padding,
+                // so it never gets clipped by the panel edge.
+                .shadow(color: selected ? .white.opacity(0.6) : (hovering ? .white.opacity(0.3) : .clear),
+                        radius: selected ? 3 : 2)
                 .padding(2)
                 .contentShape(Rectangle())
         }
@@ -160,7 +164,7 @@ private struct SourceStrip<Content: View>: View {
             .fixedSize()
             .offset(x: model.stripScroll)
             .frame(width: width, alignment: .leading)
-            .padding(.vertical, 2)
+            .padding(.vertical, 3)
             .clipped()
             .mask(edgeFade)
             .background(
