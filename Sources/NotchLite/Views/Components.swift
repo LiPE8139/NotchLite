@@ -329,9 +329,9 @@ struct SwappingCover: View {
             incomingArtwork = next
             incomingOpacity = 0
             DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.15)) { incomingOpacity = 1 }
+                withAnimation(.easeInOut(duration: 0.2)) { incomingOpacity = 1 }
                 Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(160))
+                    try? await Task.sleep(for: .milliseconds(210))
                     shownArtwork = next
                     incomingArtwork = nil
                     incomingOpacity = 0
