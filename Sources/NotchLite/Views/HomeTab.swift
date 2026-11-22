@@ -161,10 +161,11 @@ private struct MediaCard: View {
                     Image(nsImage: icon).resizable().frame(width: 26, height: 26).offset(x: 7, y: 7)
                 }
             }
-            .scaleEffect(artworkHovering ? 1.1 : (media.isPlaying ? 1 : 0.92))
+            // Only the hover lift scales the cover now: tying it to playback state made it shrink
+            // a second time whenever a track change briefly reported "paused".
+            .scaleEffect(artworkHovering ? 1.1 : 1)
             .onHover { artworkHovering = $0 }
             .animation(MediaMotion.spring, value: artworkHovering)
-            .animation(MediaMotion.spring, value: media.isPlaying)
             .onTapGesture { media.openPlayerApp() }
             // Two-finger style swipe over the cover cycles the sessions that are playing.
             .gesture(DragGesture(minimumDistance: 24).onEnded { value in
