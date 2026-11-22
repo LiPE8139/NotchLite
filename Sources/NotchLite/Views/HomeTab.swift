@@ -134,7 +134,11 @@ private struct ScrubBar: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(.white.opacity(hovering || dragProgress != nil ? 0.3 : 0.18))
-                        Capsule().fill(media.accent).frame(width: geo.size.width * progress)
+                        Capsule()
+                            .fill(media.accent)
+                            .frame(width: geo.size.width * progress)
+                            .shadow(color: media.accent.opacity(hovering || dragProgress != nil ? 0.9 : 0),
+                                    radius: hovering || dragProgress != nil ? 6 : 0)
                     }
                     .frame(height: (dragProgress == nil && !hovering) ? 4 : 7)
                     .frame(maxHeight: .infinity)

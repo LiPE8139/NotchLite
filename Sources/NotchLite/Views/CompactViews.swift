@@ -121,7 +121,7 @@ private struct WingControl: View {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
-                .shadow(color: hovering ? glow.opacity(0.75) : .clear, radius: hovering ? 7 : 0)
+                .shadow(color: hovering ? glow.opacity(1) : .clear, radius: hovering ? 10 : 0)
                 .frame(width: 18, height: 20)
                 .contentShape(Rectangle())
         }

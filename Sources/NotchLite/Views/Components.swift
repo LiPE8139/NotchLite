@@ -258,8 +258,8 @@ struct IconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
-                .shadow(color: hovering ? Color.white.opacity(0.55) : .clear,
-                        radius: hovering ? 6 : 0)
+                .shadow(color: hovering ? Color.white.opacity(0.9) : .clear,
+                        radius: hovering ? 8 : 0)
                 .frame(width: size + 16, height: size + 16)
                 .contentShape(Circle())
         }
