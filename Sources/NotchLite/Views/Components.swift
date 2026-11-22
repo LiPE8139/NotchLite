@@ -259,7 +259,6 @@ struct IconButton: View {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: size + 16, height: size + 16)
-                .background(Circle().fill(.white.opacity(hovering ? 0.14 : 0)))
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())

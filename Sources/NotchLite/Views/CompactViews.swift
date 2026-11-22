@@ -121,7 +121,6 @@ private struct WingControl: View {
                 .font(.system(size: size, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 18, height: 20)
-                .background(Circle().fill(.white.opacity(hovering ? 0.18 : 0)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
