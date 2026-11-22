@@ -274,3 +274,74 @@ struct IconButton: View {
 /// The macOS 27 SDK turns `@State` into a macro whose plugin only ships with Xcode.
 /// Spelling the property wrapper through an alias keeps Command Line Tools builds working.
 typealias ViewState<Value> = SwiftUI.State<Value>
+
+/// A cover that reacts to a track change the same way everywhere it is used: it shrinks on the
+/// request, dissolves the old image into the new one while small, then springs back.
+struct SwappingCover: View {
+    let media: NowPlayingService
+    let size: CGFloat
+    let corner: CGFloat
+
+    @ViewState private var shownArtwork: NSImage?
+    @ViewState private var incomingArtwork: NSImage?
+    @ViewState private var incomingOpacity: Double = 0
+    @ViewState private var coverScale: CGFloat = 1
+    @ViewState private var awaitingCover = false
+    @ViewState private var breathing = false
+
+    var body: some View {
+        ZStack {
+            ArtworkView(image: shownArtwork ?? media.artwork, size: size, corner: corner)
+            if let incoming = incomingArtwork {
+                ArtworkView(image: incoming, size: size, corner: corner)
+                    .opacity(incomingOpacity)
+            }
+        }
+        .scaleEffect(coverScale * (breathing ? 1.023 : 1))
+        .onChange(of: media.coverRequestID) { _, _ in begin() }
+        .onChange(of: media.artworkIdentity) { _, _ in
+            // No click involved (the track ended by itself): start the same sequence now.
+            if !awaitingCover { begin() }
+            swapIn(media.artwork)
+        }
+        .onAppear { shownArtwork = media.artwork }
+    }
+
+    private func begin() {
+        guard !awaitingCover else { return }
+        awaitingCover = true
+        withAnimation(.easeIn(duration: 0.14)) { coverScale = 0.86 }
+        withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { breathing = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard awaitingCover else { return }
+            finish(with: nil)
+        }
+    }
+
+    private func swapIn(_ next: NSImage?) {
+        withAnimation(.easeOut(duration: 0.18)) { breathing = false }
+        incomingArtwork = next
+        incomingOpacity = 0
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.32)) { incomingOpacity = 1 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(280))
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { coverScale = 1 }
+                try? await Task.sleep(for: .milliseconds(60))
+                finish(with: next)
+            }
+        }
+    }
+
+    private func finish(with next: NSImage?) {
+        withAnimation(.easeOut(duration: 0.18)) { breathing = false }
+        if let next { shownArtwork = next }
+        incomingArtwork = nil
+        incomingOpacity = 0
+        awaitingCover = false
+        if coverScale != 1 {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { coverScale = 1 }
+        }
+    }
+}

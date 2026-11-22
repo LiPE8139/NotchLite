@@ -7,9 +7,7 @@ struct CompactWingsView: View {
     var body: some View {
         let media = model.media
         WingsLayout(notchWidth: model.notchSize.width, height: model.notchSize.height) {
-            ArtworkView(image: media.artwork, size: 24, corner: 7)
-                .id(media.artworkIdentity)
-                .transition(.opacity)
+            SwappingCover(media: media, size: 24, corner: 7)
                 .allowsHitTesting(false)
         } trailing: {
             if model.isHovering && model.canShowWings {
