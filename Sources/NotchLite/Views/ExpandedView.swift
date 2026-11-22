@@ -44,7 +44,7 @@ struct ExpandedView: View {
 
             Color.clear.frame(width: model.notchSize.width + 10)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 if model.media.sources.count > 1 {
                     // A strip that stays three chips wide: past that it scrolls with a two-finger
                     // swipe instead of squeezing the row into the notch.
@@ -68,7 +68,9 @@ struct ExpandedView: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 10)
+        // Asymmetric: the trailing side carries the source strip and needs the extra room.
+        .padding(.leading, 10)
+        .padding(.trailing, 2)
         .padding(.top, 2)
     }
 }
