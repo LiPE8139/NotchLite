@@ -9,10 +9,15 @@ struct ExpandedView: View {
                 .frame(height: model.notchSize.height)
             Group {
                 switch model.tab {
-                case .home: HomeTab(model: model)
-                case .shelf: ShelfTab(model: model)
+                case .home:
+                    HomeTab(model: model)
+                        .transition(Self.tabIn)
+                case .shelf:
+                    ShelfTab(model: model)
+                        .transition(Self.tabIn)
                 }
             }
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: model.tab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 22)
             .padding(.top, 4)
@@ -21,6 +26,11 @@ struct ExpandedView: View {
         .padding(.horizontal, Metrics.expandedTopRadius)
         .foregroundStyle(.white)
     }
+
+    /// Switching tabs slides the new page up from just below the notch while the old one fades.
+    private static let tabIn = AnyTransition.asymmetric(
+        insertion: .opacity.combined(with: .offset(y: 10)).combined(with: .scale(scale: 0.985, anchor: .top)),
+        removal: .opacity.combined(with: .offset(y: -6)))
 
     private var header: some View {
         HStack(spacing: 0) {
@@ -87,6 +97,8 @@ private struct SourceChip: View {
     let icon: NSImage
     let action: () -> Void
 
+    @ViewState private var hovering = false
+
     var body: some View {
         Button(action: action) {
             Image(nsImage: icon)
@@ -97,11 +109,16 @@ private struct SourceChip: View {
                 .padding(2)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(selected ? 0.16 : 0))
+                        .fill(.white.opacity(selected ? 0.16 : (hovering ? 0.08 : 0)))
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
+        // Hover lifts the chip, and switching sessions grows it in rather than snapping.
+        .scaleEffect(selected ? 1.08 : (hovering ? 1.04 : 1))
+        .animation(.spring(response: 0.28, dampingFraction: 0.64), value: selected)
+        .animation(.spring(response: 0.28, dampingFraction: 0.64), value: hovering)
+        .onHover { hovering = $0 }
         .help(source.displayName)
     }
 }

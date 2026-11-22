@@ -20,6 +20,8 @@ private struct MediaCard: View {
 
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
+    /// Momentary squash while the click is being delivered.
+    @ViewState private var coverPressed = false
     /// The cover actually on screen, and the incoming one while a change is loading.
     @ViewState private var shownArtwork: NSImage?
     @ViewState private var incomingArtwork: NSImage?
@@ -167,10 +169,18 @@ private struct MediaCard: View {
             }
             // Only the hover lift scales the cover now: tying it to playback state made it shrink
             // a second time whenever a track change briefly reported "paused".
-            .scaleEffect(artworkHovering ? 1.1 : 1)
+            .scaleEffect((artworkHovering ? 1.1 : 1) * (coverPressed ? 0.94 : 1))
             .onHover { artworkHovering = $0 }
             .animation(MediaMotion.spring, value: artworkHovering)
-            .onTapGesture { media.openPlayerApp() }
+            .onTapGesture {
+                // Squash first, then hand over to the player: the click reads as a press instead of
+                // the panel vanishing the instant it is registered.
+                withAnimation(.easeOut(duration: 0.08)) { coverPressed = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    media.openPlayerApp()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.62)) { coverPressed = false }
+                }
+            }
             // Two-finger style swipe over the cover cycles the sessions that are playing.
             .gesture(DragGesture(minimumDistance: 24).onEnded { value in
                 if value.translation.height < -24 { media.selectNext() }
