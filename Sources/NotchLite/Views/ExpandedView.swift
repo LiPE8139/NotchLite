@@ -50,7 +50,8 @@ struct ExpandedView: View {
                 if model.media.sources.count > 1 {
                     // A strip that stays three chips wide: past that it scrolls with a two-finger
                     // swipe instead of squeezing the row into the notch.
-                    SourceStrip(count: model.media.sources.count,
+                    SourceStrip(model: model,
+                                count: model.media.sources.count,
                                 selectedID: model.media.selected?.id) {
                         HStack(spacing: 3) {
                             ForEach(model.media.sources) { source in
@@ -130,9 +131,11 @@ private struct SourceChip: View {
     }
 }
 
-/// Three chips are always visible; more than that scrolls horizontally under a two-finger swipe,
-/// with soft edges hinting there is more to the side.
+/// Three chips are always visible; more than that slides sideways under a two-finger swipe.
+/// The offset is driven from trackpad events (see NotchController) because a SwiftUI ScrollView
+/// does not scroll reliably inside this non-activating panel.
 private struct SourceStrip<Content: View>: View {
+    let model: IslandModel
     let count: Int
     let selectedID: String?
     @ViewBuilder var content: Content
@@ -140,40 +143,49 @@ private struct SourceStrip<Content: View>: View {
     private var chipWidth: CGFloat { 20 }
     private var spacing: CGFloat { 3 }
     private var visible: Int { min(count, 3) }
+    private var contentWidth: CGFloat {
+        CGFloat(count) * chipWidth + CGFloat(max(0, count - 1)) * spacing
+    }
 
     var body: some View {
-        // Cell width, gaps, and 4pt of slack so the 1.18× selected icon is not clipped.
         let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                content
-                    .scrollTargetLayout()
-                    .padding(.leading, 4)
-                    .padding(.trailing, 4)
-                    .padding(.vertical, 2)
-            }
-            .frame(width: width)
-            // No snapping: with only a chip's width of travel it fought the fingers and felt like
-            // it would only move one way.
+
+        content
+            .fixedSize()
+            .offset(x: model.stripScroll)
+            .frame(width: width, alignment: .leading)
+            .padding(.vertical, 2)
+            .clipped()
             .mask(edgeFade)
-            .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
-            // Picking a player brings it to the middle of the strip, so the current session is
-            // never half hidden at an edge.
-            .onChange(of: selectedID) { _, id in
-                guard let id else { return }
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
-                    proxy.scrollTo(id, anchor: .center)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { sync(viewport: width, frame: geo.frame(in: .global)) }
+                        .onChange(of: count) { _, _ in sync(viewport: width, frame: geo.frame(in: .global)) }
+                        .onChange(of: selectedID) { _, id in centre(on: id, viewport: width) }
                 }
-            }
-            .onAppear {
-                guard let id = selectedID else { return }
-                proxy.scrollTo(id, anchor: .center)
-            }
+            )
+            .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
+    }
+
+    private func sync(viewport: CGFloat, frame: CGRect) {
+        model.stripFrame = frame
+        model.stripMaxScroll = max(0, contentWidth - viewport)
+        model.stripScroll = min(0, max(-model.stripMaxScroll, model.stripScroll))
+        centre(on: selectedID, viewport: viewport)
+    }
+
+    /// Puts the chosen player in the middle of the strip.
+    private func centre(on id: String?, viewport: CGFloat) {
+        guard let id, let index = model.media.sources.firstIndex(where: { $0.id == id }) else { return }
+        let chipCentre = CGFloat(index) * (chipWidth + spacing) + chipWidth / 2
+        let target = viewport / 2 - chipCentre
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
+            model.stripScroll = min(0, max(-model.stripMaxScroll, target))
         }
     }
 
-    /// A soft right edge hints that more players are waiting; the left edge stays solid so the
-    /// first chip is never partially faded.
+    /// A soft right edge hints that more players are waiting.
     private var edgeFade: some View {
         HStack(spacing: 0) {
             Rectangle()

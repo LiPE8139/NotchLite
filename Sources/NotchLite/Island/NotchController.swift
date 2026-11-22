@@ -191,6 +191,20 @@ final class NotchController {
                 if event.type != .leftMouseDown { self?.handleMouse() }
             }
         }) { monitors.append(global) }
+        // The source strip scrolls from here rather than from SwiftUI: a ScrollView in this
+        // non-activating panel ignored the trackpad.
+        if let scroll = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { [weak self] event in
+            guard let self, self.model.isExpanded, !self.isMenuOpen else { return event }
+            guard self.model.stripFrame.insetBy(dx: -6, dy: -6).contains(event.locationInWindow) else { return event }
+            let delta = event.scrollingDeltaX
+            guard delta != 0 else { return event }
+            self.model.stripScroll = min(0, max(-self.model.stripMaxScroll,
+                                                self.model.stripScroll + delta))
+            return nil
+        }) {
+            monitors.append(scroll)
+        }
+
         if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
             MainActor.assumeIsolated { self?.handleMouse() }
             return event

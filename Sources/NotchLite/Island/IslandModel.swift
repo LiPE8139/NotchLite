@@ -60,6 +60,13 @@ final class IslandModel {
     let shelf = ShelfStore()
 
     @ObservationIgnored var onOpenSettings: (() -> Void)?
+
+    /// Horizontal scroll of the source strip. Driven by trackpad events rather than a SwiftUI
+    /// ScrollView, which does not scroll reliably inside this non-activating panel.
+    var stripScroll: CGFloat = 0
+    var stripMaxScroll: CGFloat = 0
+    /// Where the strip sits in window coordinates, so the event monitor knows when to take over.
+    var stripFrame: CGRect = .zero
     @ObservationIgnored var onTapExpand: (() -> Void)?
     @ObservationIgnored private var peekTask: Task<Void, Never>?
     @ObservationIgnored private var launchDate = Date()
