@@ -55,6 +55,15 @@ the playback slot:
 Transport falls back in this order: script → MediaRemote (only when the player holds the slot) →
 global shortcut. Nothing else is asked for — the shelf only stores paths.
 
+## Known limitations
+
+**Artwork for players without a scripting interface.** MediaRemote hands out artwork only for the
+session that holds the system playback slot; for every other session it exposes the cover's
+metadata (`ArtworkIdentifier`, size, MIME) but never the image itself. Scriptable players (Music,
+Spotify) are fetched through AppleScript and are unaffected, so 网易云音乐 and other non-scriptable
+players only refresh their cover while they own the slot. When they do not, the previous cover stays
+on screen rather than showing a wrong one.
+
 ## Notes
 
 - `CFBundleIdentifier` is a placeholder (`com.example.notchlite`) — change it before distributing,
