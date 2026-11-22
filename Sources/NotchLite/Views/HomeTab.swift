@@ -28,6 +28,8 @@ private struct MediaCard: View {
     @ViewState private var coverScale: CGFloat = 1
     /// True from the click until the new cover has been swapped in.
     @ViewState private var awaitingCover = false
+    /// Gentle pulse while the new cover is loading, so the wait never looks frozen.
+    @ViewState private var breathing = false
 
     var body: some View {
         if media.hasMedia {
@@ -101,6 +103,7 @@ private struct MediaCard: View {
         guard !awaitingCover else { return }
         awaitingCover = true
         withAnimation(.easeIn(duration: 0.14)) { coverScale = 0.86 }
+        withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { breathing = true }
         // Nothing arrived (a player with no artwork): go back to full size.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
@@ -113,6 +116,7 @@ private struct MediaCard: View {
     /// The grow starts just before the dissolve ends, so the two motions overlap instead of
     /// queueing up.
     private func swapIn(_ next: NSImage?) {
+        withAnimation(.easeOut(duration: 0.18)) { breathing = false }
         incomingArtwork = next
         incomingOpacity = 0
         // Next turn, so the incoming tile is laid out at 0 before it fades in.
@@ -128,6 +132,7 @@ private struct MediaCard: View {
     }
 
     private func finishCoverSwap(with next: NSImage?) {
+        withAnimation(.easeOut(duration: 0.18)) { breathing = false }
         if let next { shownArtwork = next }
         incomingArtwork = nil
         incomingOpacity = 0
@@ -145,7 +150,7 @@ private struct MediaCard: View {
                     .opacity(incomingOpacity)
             }
         }
-        .scaleEffect(coverScale)
+        .scaleEffect(coverScale * (breathing ? 1.023 : 1))
         .onChange(of: media.artworkIdentity) { _, _ in
             // No click involved (the track ended by itself): start the same sequence now.
             if !awaitingCover { beginCoverLoad() }
