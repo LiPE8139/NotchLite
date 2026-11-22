@@ -141,25 +141,27 @@ private struct SourceStrip<Content: View>: View {
         let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
         ScrollView(.horizontal, showsIndicators: false) {
             content
-                .padding(.horizontal, 2)
+                .scrollTargetLayout()
+                .padding(.leading, 4)
+                .padding(.trailing, 2)
                 .padding(.vertical, 2)
         }
         .frame(width: width)
+        // Rest on a chip, never half way across one: a partly scrolled chip used to read as if the
+        // notch were covering it.
+        .scrollTargetBehavior(.viewAligned)
         .mask(edgeFade)
         .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
     }
 
-    /// Only fades the sides that actually have content hidden behind them.
+    /// A soft right edge hints that more players are waiting; the left edge stays solid so the
+    /// first chip is never partially faded.
     private var edgeFade: some View {
         HStack(spacing: 0) {
-            if count > 3 {
-                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: 8)
-            }
             Rectangle()
             if count > 3 {
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: 8)
+                    .frame(width: 7)
             }
         }
     }
