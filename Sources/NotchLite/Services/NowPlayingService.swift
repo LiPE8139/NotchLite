@@ -2,10 +2,7 @@ import AppKit
 import Foundation
 import SwiftUI
 
-/// One concurrent Now Playing session, as reported by the MediaRemote bridge.
-///
-/// Several of these can exist at once — a song in Music and a video in a browser — which is what
-/// the system's own Now Playing panel shows.
+/// The session macOS is currently playing, as reported by the MediaRemote bridge.
 struct MediaSource: Identifiable, Equatable {
     let bundleID: String
     let displayName: String
@@ -17,8 +14,6 @@ struct MediaSource: Identifiable, Equatable {
     var elapsed: TimeInterval
     var rate: Double
     var isPlaying: Bool
-    /// The session the system currently routes transport commands to.
-    var isActive: Bool
     /// When the bridge reported this snapshot; elapsed is extrapolated from here.
     var reportedAt: Date
 
@@ -31,119 +26,77 @@ struct MediaSource: Identifiable, Equatable {
     }
 }
 
-/// Streams every Now Playing session through the MediaRemote bridge and tracks which one the
-/// island is showing.
+/// Reads the active Now Playing session and drives it.
 ///
 /// Since macOS 15.4 MediaRemote refuses non-Apple callers, so the bridge is a dylib loaded by
-/// `/usr/bin/perl`: same trick the previous single-session adapter used, but reading the
-/// multi-session API.
+/// `/usr/bin/perl` — the same trick the mediaremote-adapter uses for commands.
 @Observable @MainActor
 final class NowPlayingService {
-    private(set) var sources: [MediaSource] = []
-    /// Nil follows whatever the system considers active.
-    private(set) var selectedID: String?
+    private(set) var source: MediaSource?
     private(set) var isAvailable = true
     private(set) var showsActivity = false
 
     @ObservationIgnored var onTrackChange: (() -> Void)?
 
     @ObservationIgnored private var process: Process?
-    /// The bridge's stdin: `{"bundle":"…","cmd":N}` addresses one session directly.
     @ObservationIgnored private var commandPipe: Pipe?
     @ObservationIgnored private var lineBuffer = Data()
     @ObservationIgnored private var restarts = 0
     @ObservationIgnored private var hideActivityTask: Task<Void, Never>?
     @ObservationIgnored private var lastTrackKey = ""
-    @ObservationIgnored private var pinned = false
     @ObservationIgnored private var icons: [String: NSImage] = [:]
     @ObservationIgnored private var accents: [String: Color] = [:]
-    /// Last artwork seen for each player. Only the active session is ever re-read; the rest keep
-    /// whatever they last had, which is what makes switching back feel instant.
-    ///
-    /// Deliberately observed (no `@ObservationIgnored`): storing a freshly fetched cover has to
-    /// invalidate the views, otherwise they stay on the icon fallback forever.
-    private var artworkCache: [String: NSImage] = [:]
-    private var artworkAccent: [String: Color] = [:]
+    @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
+    @ObservationIgnored private var artworkAccent: [String: Color] = [:]
+    @ObservationIgnored private var artworkVersion: [String: Int] = [:]
     @ObservationIgnored private var artworkKey: [String: String] = [:]
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
-    /// A track that asked for artwork while a fetch was already running.
-    @ObservationIgnored private var pendingArtwork: MediaSource?
-    @ObservationIgnored private var lastActiveID: String?
-    /// Like state per player. Keyed by bundle id: each app has its own flag, and switching sources
-    /// must not carry the previous one's heart along.
-    private var lovedState: [String: Bool] = [:]
-
-    var isLoved: Bool {
-        guard let bundle = selected?.bundleID else { return false }
-        return lovedState[bundle] ?? false
-    }
-
-    var selected: MediaSource? {
-        if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
-        return sources.first
-    }
 
     // MARK: - What the views read
 
     var title: String {
-        guard let selected else { return "" }
-        return selected.title.isEmpty ? selected.displayName : selected.title
+        guard let source else { return "" }
+        return source.title.isEmpty ? source.displayName : source.title
     }
-    var artist: String { selected?.artist ?? "" }
-    var album: String { selected?.album ?? "" }
-    var duration: TimeInterval { selected?.duration ?? 0 }
-    var isPlaying: Bool { selected?.isPlaying ?? false }
-    var hasMedia: Bool { selected != nil }
-    var bundleID: String? { selected?.bundleID }
-    var displayName: String { selected?.displayName ?? "" }
+    var artist: String { source?.artist ?? "" }
+    var album: String { source?.album ?? "" }
+    var duration: TimeInterval { source?.duration ?? 0 }
+    var isPlaying: Bool { source?.isPlaying ?? false }
+    var hasMedia: Bool { source != nil }
+    var bundleID: String? { source?.bundleID }
+    var displayName: String { source?.displayName ?? "" }
 
-    /// Whether the transport should be offered: scriptable players always, players we can drive by
-    /// hotkey always, the rest only while they hold the system's playback slot.
-    var canControl: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
+    /// The active session is by definition the one macOS accepts commands for.
+    var canControl: Bool { source != nil }
+    var canSeek: Bool { source != nil }
 
-    /// Players that answered "Failed to seek": NetEase rejects it even when it holds the slot, so
-    /// the progress bar must not pretend otherwise.
-    private(set) var seekUnsupported: Set<String> = []
-
-    /// Seeking needs either a scripting dictionary or a player that actually accepts remote seeks.
-    var canSeek: Bool {
-        guard let selected else { return false }
-        if canScript { return true }
-        return selected.isActive && !seekUnsupported.contains(selected.bundleID)
-    }
-
-    /// Cached artwork for this player, or its icon when the player never offered any (video
-    /// sources have none, and that is fine).
     var artwork: NSImage? {
-        guard let selected else { return nil }
-        return artworkCache[selected.bundleID] ?? icon(for: selected.bundleID)
+        guard let source else { return nil }
+        return artworkCache[source.bundleID] ?? icon(for: source.bundleID)
     }
 
-    var playerIcon: NSImage? { selected.map { icon(for: $0.bundleID) } }
+    var playerIcon: NSImage? { source.map { icon(for: $0.bundleID) } }
 
     var accent: Color {
-        guard let bundle = selected?.bundleID else { return .white }
+        guard let bundle = source?.bundleID else { return .white }
         return artworkAccent[bundle] ?? accents[bundle] ?? .white
     }
 
-    func elapsed(at date: Date) -> TimeInterval { selected?.elapsed(at: date) ?? 0 }
+    func elapsed(at date: Date) -> TimeInterval { source?.elapsed(at: date) ?? 0 }
 
-    /// Changes whenever the shown track does; drives the text cross-fade.
+    /// Changes whenever the track does; drives the text cross-fade.
     var trackIdentity: String {
-        guard let selected else { return "" }
-        return "\(selected.bundleID)|\(selected.title)|\(selected.artist)"
+        guard let source else { return "" }
+        return "\(source.bundleID)|\(source.title)|\(source.artist)"
     }
 
-    /// Bumped whenever a new cover is stored, so views can cross-fade on the image itself rather
-    /// than on the track metadata (which arrives well before the artwork does).
-    private var artworkVersion: [String: Int] = [:]
-
+    /// Bumped whenever a new cover is stored, so views can animate on the image itself.
     var artworkIdentity: String {
-        guard let bundle = selected?.bundleID else { return "" }
+        guard let bundle = source?.bundleID else { return "" }
         return "\(bundle)#\(artworkVersion[bundle] ?? 0)"
     }
 
-    /// Player icon, also used by the session switcher in the header.
+    /// Player icon, also used where the artwork is missing.
     func icon(for bundle: String) -> NSImage {
         if let cached = icons[bundle] { return cached }
         let image: NSImage
@@ -157,46 +110,9 @@ final class NowPlayingService {
         return image
     }
 
-    // MARK: - Switching sessions
-
-    func selectNext() { step(by: 1) }
-    func selectPrevious() { step(by: -1) }
-
-    private func step(by delta: Int) {
-        guard sources.count > 1 else { return }
-        let current = sources.firstIndex { $0.id == (selected?.id ?? "") } ?? 0
-        let next = (current + delta + sources.count) % sources.count
-        pinned = true
-        selectedID = sources[next].id
-        lastTrackKey = trackKey(of: sources[next])
-        updateActivity()
-    }
-
-    func select(_ id: String) {
-        guard let match = sources.first(where: { $0.id == id }) else { return }
-        pinned = true
-        selectedID = id
-        lastTrackKey = trackKey(of: match)
-        updateActivity()
-    }
-
-    /// Back to following the system's active session.
-    func followSystem() {
-        pinned = false
-        selectedID = nil
-        updateActivity()
-    }
-
     // MARK: - Lifecycle
 
     func start() {
-        // Ask once so the app lands in System Settings → Accessibility; the toggle itself can only
-        // be flipped by hand, so surface it early instead of waiting for a failed button press.
-        let prompted = UserDefaults.standard.bool(forKey: "askedForAccessibility")
-        if !HotkeyInjector.isTrusted && !prompted {
-            UserDefaults.standard.set(true, forKey: "askedForAccessibility")
-            HotkeyInjector.requestTrust()
-        }
         guard let launch = Self.launchConfiguration() else {
             isAvailable = false
             NSLog("[NowPlaying] MediaRemote bridge not found; Now Playing disabled")
@@ -271,147 +187,47 @@ final class NowPlayingService {
 
     private func ingest(_ raw: [[String: Any]]) {
         let now = Date()
-        let previous = Dictionary(sources.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
-        var parsed: [MediaSource] = []
-        for item in raw {
-            guard let bundle = item["bundle"] as? String, !bundle.isEmpty else { continue }
-            let title = item["title"] as? String ?? ""
-            var source = MediaSource(
-                bundleID: bundle,
-                displayName: item["name"] as? String ?? bundle,
-                pid: Int32(item["pid"] as? Int ?? 0),
-                title: title,
-                artist: item["artist"] as? String ?? "",
-                album: item["album"] as? String ?? "",
-                duration: item["duration"] as? Double ?? 0,
-                elapsed: item["elapsed"] as? Double ?? 0,
-                rate: item["rate"] as? Double ?? 0,
-                isPlaying: item["playing"] as? Bool ?? false,
-                isActive: item["active"] as? Bool ?? false,
-                reportedAt: now)
 
-            // Keep extrapolating from the previous anchor while the report merely tracks playback;
-            // re-anchor only on a real jump (a seek) or a new track. Without this the bar nudges
-            // backwards every time a slightly stale position arrives.
-            if let old = previous[bundle], old.title == source.title, old.duration == source.duration {
-                let predicted = old.elapsed(at: now)
-                if abs(source.elapsed - predicted) < 1.5 {
-                    source.elapsed = old.elapsed
-                    source.reportedAt = old.reportedAt
-                }
-            }
-            parsed.append(source)
+        // Only the session macOS is driving is shown: it is the one commands can reach.
+        guard var item = raw.first(where: { $0["active"] as? Bool == true }) ?? raw.first,
+              let bundle = item["bundle"] as? String, !bundle.isEmpty else {
+            if source != nil { source = nil; showsActivity = false }
+            return
         }
+        item.removeValue(forKey: "active")
 
-        // The session the system is driving leads the list, like the system's own panel.
-        parsed.sort { a, b in a.isActive == b.isActive ? false : a.isActive }
+        var parsed = MediaSource(
+            bundleID: bundle,
+            displayName: item["name"] as? String ?? bundle,
+            pid: Int32(item["pid"] as? Int ?? 0),
+            title: item["title"] as? String ?? "",
+            artist: item["artist"] as? String ?? "",
+            album: item["album"] as? String ?? "",
+            duration: item["duration"] as? Double ?? 0,
+            elapsed: item["elapsed"] as? Double ?? 0,
+            rate: item["rate"] as? Double ?? 0,
+            isPlaying: item["playing"] as? Bool ?? false,
+            reportedAt: now)
+
+        // Keep extrapolating from the previous anchor while the report merely tracks playback;
+        // re-anchor only on a real jump (a seek) or a new track.
+        if let old = source, old.bundleID == bundle, old.title == parsed.title, old.duration == parsed.duration {
+            let predicted = old.elapsed(at: now)
+            if abs(parsed.elapsed - predicted) < 1.5 {
+                parsed.elapsed = old.elapsed
+                parsed.reportedAt = old.reportedAt
+            }
+        }
 
         let previousKey = lastTrackKey
-        sources = parsed
-
-        if !pinned || !parsed.contains(where: { $0.id == selectedID }) {
-            if let active = parsed.first(where: { $0.isActive }) {
-                selectedID = active.id
-            } else if let current = selectedID, parsed.contains(where: { $0.id == current }) {
-                // keep the current pick while it is still around
-            } else {
-                selectedID = parsed.first?.id
-            }
-            if !parsed.contains(where: { $0.id == selectedID }) { pinned = false }
-        }
-
-        lastTrackKey = trackKey(of: selected)
+        source = parsed
+        lastTrackKey = trackKey(of: parsed)
         updateActivity()
-
-        if let active = parsed.first(where: { $0.isActive }) {
-            // Re-entering the active slot is a good moment to re-read its artwork.
-            if lastActiveID != active.id { artworkKey[active.id] = nil }
-            lastActiveID = active.id
-            refreshArtwork(for: active)
-        } else {
-            lastActiveID = nil
-        }
+        refreshArtwork(for: parsed)
 
         if lastTrackKey != previousKey, !lastTrackKey.isEmpty, isPlaying {
             onTrackChange?()
         }
-    }
-
-    /// Artwork is only pulled for the session the system is driving: the single-session API is the
-    /// one that exposes it, and the others keep their previous image until they become active.
-    private func refreshArtwork(for source: MediaSource) {
-        let key = "\(source.title)|\(source.artist)"
-        guard artworkKey[source.bundleID] != key else { return }
-        // Skipping tracks quickly must not drop the new track's request.
-        guard artworkTask == nil else { pendingArtwork = source; return }
-        artworkTask = Task { [weak self] in
-            // Players publish the cover a moment after the metadata, so the first read often comes
-            // back empty. Retry briefly before giving up until the next track.
-            for attempt in 1...4 {
-                if let loaded = await Self.loadActiveArtwork() {
-                    self?.store(artwork: loaded.image, for: loaded.bundle)
-                    self?.artworkKey[source.bundleID] = key
-                    break
-                }
-                if attempt < 4 { try? await Task.sleep(for: .milliseconds(450)) }
-            }
-            guard let self else { return }
-            if self.artworkKey[source.bundleID] != key {
-                self.artworkKey[source.bundleID] = key
-            }
-            self.artworkTask = nil
-            if let next = self.pendingArtwork {
-                self.pendingArtwork = nil
-                self.refreshArtwork(for: next)
-            }
-        }
-    }
-
-    private func store(artwork image: NSImage, for bundle: String) {
-        var covers = artworkCache
-        covers[bundle] = image
-        artworkCache = covers
-        artworkVersion[bundle, default: 0] += 1
-        if let tint = image.vibrantAverageColor {
-            var tints = artworkAccent
-            tints[bundle] = Color(nsColor: tint)
-            artworkAccent = tints
-        }
-    }
-
-    /// One-shot read of the active session's artwork through the single-session adapter.
-    private static func loadActiveArtwork() async -> (bundle: String, image: NSImage)? {
-        guard let paths = AdapterPaths.locate() else { return nil }
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-                process.arguments = [paths.script.path, paths.framework.path, "get"]
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = FileHandle.nullDevice
-                do { try process.run() } catch { continuation.resume(returning: nil); return }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let bundle = json["bundleIdentifier"] as? String,
-                      let base64 = json["artworkData"] as? String,
-                      let raw = Data(base64Encoded: base64),
-                      let image = thumbnail(from: raw, maxPixelSize: 256)
-                else { continuation.resume(returning: nil); return }
-                continuation.resume(returning: (bundle, image))
-            }
-        }
-    }
-
-    private nonisolated static func thumbnail(from data: Data, maxPixelSize: Int) -> NSImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-              ] as CFDictionary) else { return nil }
-        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 
     private func trackKey(of source: MediaSource?) -> String {
@@ -433,128 +249,99 @@ final class NowPlayingService {
         }
     }
 
-    // MARK: - Transport
+    // MARK: - Artwork
 
-    /// Players with a scripting dictionary are driven through AppleScript instead: that talks to the
-    /// app directly, so it works even while another app owns the system's playback slot, which is
-    /// what limits MediaRemote commands.
-    private static let scriptableBundles: Set<String> = ["com.apple.Music", "com.spotify.client"]
-
-    var canScript: Bool {
-        guard let bundle = selected?.bundleID else { return false }
-        return Self.scriptableBundles.contains(bundle)
-    }
-
-    /// NetEase has a global shortcut for liking the current song; nothing else exposes one.
-    var supportsLike: Bool { bundleID == "com.netease.163music" }
-
-    /// Presses the player's like shortcut. The player gives us no way to read the flag back, so the
-    /// heart lights up briefly rather than claiming a state we cannot verify.
-    func toggleLoved() {
-        guard let bundle = bundleID, bundle == "com.netease.163music" else { return }
-        HotkeyInjector.like(.netEase)
-        lovedState[bundle] = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.2))
-            self.lovedState[bundle] = false
+    /// Players publish the cover a moment after the metadata, so the first read often comes back
+    /// empty. Retry briefly, then keep whatever the player last offered.
+    private func refreshArtwork(for source: MediaSource) {
+        let key = "\(source.title)|\(source.artist)"
+        guard artworkKey[source.bundleID] != key, artworkTask == nil else { return }
+        artworkTask = Task { [weak self] in
+            for attempt in 1...4 {
+                if let loaded = await Self.loadArtwork() {
+                    self?.store(artwork: loaded.image, for: loaded.bundle)
+                    self?.artworkKey[source.bundleID] = key
+                    break
+                }
+                if attempt < 4 { try? await Task.sleep(for: .milliseconds(450)) }
+            }
+            guard let self else { return }
+            if self.artworkKey[source.bundleID] != key { self.artworkKey[source.bundleID] = key }
+            self.artworkTask = nil
         }
     }
 
-    /// Players that expose neither MediaRemote command rights nor a scripting dictionary, but do
-    /// register global hotkeys we can press.
-    private static let hotkeyBundles: Set<String> = ["com.netease.163music"]
-
-    var canUseHotkeys: Bool {
-        guard let bundle = selected?.bundleID else { return false }
-        return Self.hotkeyBundles.contains(bundle)
-    }
-
-
-    func togglePlayPause() {
-        guard let bundle = selected?.bundleID else { return }
-        if Self.scriptableBundles.contains(bundle) {
-            runScript(bundle, isPlaying ? "pause" : "play")
-        } else if selected?.isActive == true {
-            // Only an elected player accepts MediaRemote commands; otherwise fall through.
-            send(isPlaying ? 1 : 0, to: bundle)
-        } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.playPause(.netEase)
-        }
-        updateActivity()
-    }
-
-    func next() {
-        guard let bundle = selected?.bundleID else { return }
-        if Self.scriptableBundles.contains(bundle) {
-            runScript(bundle, "next track")
-        } else if selected?.isActive == true {
-            send(4, to: bundle)
-        } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.next(.netEase)
+    private func store(artwork image: NSImage, for bundle: String) {
+        var covers = artworkCache
+        covers[bundle] = image
+        artworkCache = covers
+        artworkVersion[bundle, default: 0] += 1
+        if let tint = image.vibrantAverageColor {
+            var tints = artworkAccent
+            tints[bundle] = Color(nsColor: tint)
+            artworkAccent = tints
         }
     }
 
-    func previous() {
-        guard let bundle = selected?.bundleID else { return }
-        if Self.scriptableBundles.contains(bundle) {
-            runScript(bundle, "previous track")
-        } else if selected?.isActive == true {
-            send(5, to: bundle)
-        } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.previous(.netEase)
-        }
-    }
-
-    /// Sends one AppleScript command to the player, off the main thread.
-    private func runScript(_ bundle: String, _ command: String) {
-        let appName = bundle == "com.apple.Music" ? "Music" : "Spotify"
-        let source = "tell application \"\(appName)\" to \(command)"
-        DispatchQueue.global(qos: .userInitiated).async {
-            var error: NSDictionary?
-            NSAppleScript(source: source)?.executeAndReturnError(&error)
-            if let error { NSLog("[NowPlaying] apple script failed: \(error)") }
-        }
-    }
-
-    /// Seeking: scriptable players are positioned directly, everything else goes through
-    /// MediaRemote, which only accepts it for the session holding the playback slot.
-    func seek(to seconds: TimeInterval) {
-        guard let bundle = selected?.bundleID else { return }
-        if Self.scriptableBundles.contains(bundle) {
-            runScript(bundle, String(format: "set player position to %.2f", seconds))
-            return
-        }
-        guard selected?.isActive == true, let adapter = Self.adapterPaths() else { return }
-        // Watch the exit status: a player that refuses remote seeks is remembered, so the bar
-        // stops accepting drags instead of silently doing nothing.
-        DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-            process.arguments = [adapter.script.path, adapter.framework.path,
-                                 "seek", String(Int(seconds * 1_000_000))]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do { try process.run() } catch { return }
-            process.waitUntilExit()
-            guard process.terminationStatus != 0 else { return }
-            DispatchQueue.main.async {
-                guard !self.seekUnsupported.contains(bundle) else { return }
-                self.seekUnsupported.insert(bundle)
-                NSLog("[NowPlaying] %@ does not accept remote seeks", bundle)
+    /// One-shot read of the active session's artwork through the single-session adapter.
+    private static func loadArtwork() async -> (bundle: String, image: NSImage)? {
+        guard let paths = AdapterPaths.locate() else { return nil }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+                process.arguments = [paths.script.path, paths.framework.path, "get"]
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
+                do { try process.run() } catch { continuation.resume(returning: nil); return }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let bundle = json["bundleIdentifier"] as? String,
+                      let base64 = json["artworkData"] as? String,
+                      let raw = Data(base64Encoded: base64),
+                      let image = thumbnail(from: raw, maxPixelSize: 512)
+                else { continuation.resume(returning: nil); return }
+                continuation.resume(returning: (bundle, image))
             }
         }
     }
 
-    private func send(_ command: Int, to bundle: String) {
-        guard let handle = commandPipe?.fileHandleForWriting else { return }
-        let line = "{\"bundle\":\"\(bundle)\",\"cmd\":\(command)}\n"
-        try? handle.write(contentsOf: Data(line.utf8))
+    private nonisolated static func thumbnail(from data: Data, maxPixelSize: Int) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+              ] as CFDictionary) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    }
+
+    // MARK: - Transport
+
+    func togglePlayPause() {
+        send(2)
+        updateActivity()
+    }
+
+    func next() { send(4) }
+    func previous() { send(5) }
+
+    func seek(to seconds: TimeInterval) {
+        guard let adapter = Self.adapterPaths() else { return }
+        runAdapter(adapter, ["seek", String(Int(seconds * 1_000_000))])
     }
 
     func openPlayerApp() {
         guard let bundleID,
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    private func send(_ command: Int) {
+        guard let adapter = Self.adapterPaths() else { return }
+        runAdapter(adapter, ["send", String(command)])
     }
 
     private func runAdapter(_ paths: AdapterPaths, _ args: [String]) {
@@ -579,7 +366,6 @@ struct BridgeLaunch {
     let library: URL
 }
 
-/// The bridge and the command adapter: inside the .app bundle, or in vendor/ during development.
 struct AdapterPaths {
     let script: URL
     let framework: URL
@@ -593,7 +379,7 @@ struct AdapterPaths {
                 framework: Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/MediaRemoteAdapter.framework")))
         }
         var dir = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent()
-        for _ in 0..<6 {
+        for _ in 0..<5 {
             let vendor = dir.appendingPathComponent("vendor/mediaremote-adapter")
             candidates.append(AdapterPaths(
                 script: vendor.appendingPathComponent("bin/mediaremote-adapter.pl"),

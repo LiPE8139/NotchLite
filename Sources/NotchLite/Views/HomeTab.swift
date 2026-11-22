@@ -41,20 +41,7 @@ private struct MediaCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
-                            if media.supportsLike {
-                                // NetEase cannot report the flag, so its heart only lights while the
-                                // optimistic value is set right after the press.
-                                let liked = media.isLoved
-                                Button { media.toggleLoved() } label: {
-                                    Image(systemName: liked ? "heart.fill" : "heart")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(liked ? Color.red : Color.white.opacity(0.4))
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .help(liked ? "Remove from loved" : "Love this track")
                             }
-                        }
                         Text(media.artist.isEmpty ? (media.album.isEmpty ? "Not playing" : media.album) : media.artist)
                             .font(.system(size: 12.5))
                             .foregroundStyle(.white.opacity(0.6))
@@ -172,10 +159,6 @@ private struct MediaCard: View {
             .animation(MediaMotion.spring, value: artworkHovering)
             .onTapGesture { media.openPlayerApp() }
             // Two-finger style swipe over the cover cycles the sessions that are playing.
-            .gesture(DragGesture(minimumDistance: 24).onEnded { value in
-                if value.translation.height < -24 { media.selectNext() }
-                else if value.translation.height > 24 { media.selectPrevious() }
-            })
             .help("Open the playing app")
     }
 

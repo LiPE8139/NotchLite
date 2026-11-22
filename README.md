@@ -10,7 +10,7 @@ third-party dependencies and no permission prompts.
 
 | | |
 |---|---|
-| **Now Playing** | Album art, title/artist, drag-to-seek progress, play/pause/skip. Works with Music, Spotify, 网易云音乐, browsers — anything that reports to the system Now Playing panel. While a track plays, the notch grows wings: cover on the left, a visualizer tinted to the album colours on the right. Track changes drop a small banner. |
+| **Now Playing** | Album art, title/artist, drag-to-seek progress, play/pause/skip. Works with anything that reports to the system Now Playing panel — Music, Spotify, 网易云音乐, browsers. While a track plays, the notch grows wings: cover on the left, a visualizer tinted to the album colours on the right. Track changes drop a small banner. |
 | **File shelf** | Park files, images, links and text on the notch, then drag them out later. Five ways in: drag onto the notch · shake a dragged file to summon a drop zone · `⌃⌥V` pastes the clipboard · Finder → Services → *Add to NotchLite* · `open -a NotchLite <file>`. Share, AirDrop, copy or zip from the shelf. |
 
 ### Shortcuts
@@ -43,18 +43,12 @@ so packaging needs neither network access nor cmake.
 
 ## Permissions
 
-Reading Now Playing needs no permission: it goes through `/usr/bin/perl` + a small bridge dylib,
-which macOS allows. Controlling other players does, because macOS only lets one app at a time own
-the playback slot:
+**None.** Reading and controlling Now Playing both go through `/usr/bin/perl` driving the vendored
+MediaRemote adapter, which macOS allows without a TCC grant — so there is no Automation prompt, no
+Accessibility prompt and nothing to approve on first launch. The shelf only stores paths.
 
-| Permission | Why | Covers |
-|---|---|---|
-| Automation | AppleScript talks to the player directly, bypassing the slot entirely | Apple Music, Spotify |
-| Accessibility | The player's own global shortcut is pressed on its behalf | NetEase (⌃⌥⌘S / ⌃⌥⌘A / ⌃⌥⌘D) |
-
-Transport falls back in this order: script → MediaRemote (only when the player holds the slot) →
-global shortcut. Nothing else is asked for — the shelf only stores paths.
-
+The app always shows the one session macOS is currently driving, which is also the only session
+third-party commands can reach: one player, one set of controls, no switching.
 ## Notes
 
 - `CFBundleIdentifier` is a placeholder (`com.example.notchlite`) — change it before distributing,

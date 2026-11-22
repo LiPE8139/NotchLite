@@ -34,19 +34,6 @@ struct ExpandedView: View {
             Color.clear.frame(width: model.notchSize.width + 16)
 
             HStack(spacing: 8) {
-                if model.media.sources.count > 1 {
-                    HStack(spacing: 5) {
-                        ForEach(model.media.sources) { source in
-                            SourceChip(source: source,
-                                       selected: source.id == model.media.selected?.id,
-                                       icon: model.media.icon(for: source.bundleID)) {
-                                model.media.select(source.id)
-                                // Picking a player from the header should show it, wherever we are.
-                                model.tab = .home
-                            }
-                        }
-                    }
-                }
                 IconButton(symbol: "gearshape.fill", size: 12, help: "Settings") {
                     model.onOpenSettings?()
                 }
@@ -76,32 +63,5 @@ private struct TabButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-    }
-}
-
-
-/// One session in the header switcher. Dimmed until it is the one being shown.
-private struct SourceChip: View {
-    let source: MediaSource
-    let selected: Bool
-    let icon: NSImage
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(nsImage: icon)
-                .resizable()
-                .frame(width: 16, height: 16)
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .opacity(selected ? 1 : 0.4)
-                .padding(2)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(selected ? 0.16 : 0))
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(source.displayName)
     }
 }
