@@ -100,24 +100,25 @@ private struct MediaCard: View {
                     .opacity(incomingOpacity)
             }
         }
-        // Shrink, dissolve the old cover into the new one at the smallest point, then spring back.
+        // One overlapping move: the dissolve starts just before the tile bottoms out and the
+        // spring back begins before the dissolve finishes, so there is no seam between phases.
         .scaleEffect(swapPulse)
         .onChange(of: media.artworkIdentity) { _, _ in
             let next = media.artwork
-            withAnimation(.easeIn(duration: 0.15)) { swapPulse = 0.86 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            Task { @MainActor in
+                withAnimation(.easeIn(duration: 0.13)) { swapPulse = 0.86 }
+                try? await Task.sleep(for: .milliseconds(100))
                 incomingArtwork = next
                 incomingOpacity = 0
                 // One tick so the incoming tile is laid out at 0 before it fades in.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                    withAnimation(.easeInOut(duration: 0.22)) { incomingOpacity = 1 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                        shownArtwork = next
-                        incomingArtwork = nil
-                        incomingOpacity = 0
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { swapPulse = 1 }
-                    }
-                }
+                try? await Task.sleep(for: .milliseconds(16))
+                withAnimation(.easeInOut(duration: 0.20)) { incomingOpacity = 1 }
+                try? await Task.sleep(for: .milliseconds(140))
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.66)) { swapPulse = 1 }
+                try? await Task.sleep(for: .milliseconds(70))
+                shownArtwork = next
+                incomingArtwork = nil
+                incomingOpacity = 0
             }
         }
         .onAppear { shownArtwork = media.artwork }
