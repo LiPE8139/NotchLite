@@ -16,7 +16,7 @@ enum MediaMotion {
 
 private struct MediaCard: View {
     /// The cover's edge length; the text column is pinned to the same height.
-    static let coverSize: CGFloat = 104
+    static let coverSize: CGFloat = 112
 
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
@@ -83,7 +83,7 @@ private struct MediaCard: View {
 
     private var artwork: some View {
         ZStack {
-            ArtworkView(image: media.artwork, size: MediaCard.coverSize, corner: 20)
+            ArtworkView(image: media.artwork, size: MediaCard.coverSize, corner: 22)
                 // Keyed on the artwork itself: the fade starts when the new image actually lands,
                 // not when the track metadata does.
                 .id(media.artworkIdentity)
