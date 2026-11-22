@@ -271,6 +271,20 @@ final class NowPlayingService {
 
     private func ingest(_ raw: [[String: Any]]) {
         let now = Date()
+
+        // Every session ships its own cover now, so a player that does not hold the command slot
+        // still gets a fresh image instead of keeping whatever it showed last time.
+        for item in raw {
+            guard let bundle = item["bundle"] as? String,
+                  let encoded = item["artwork"] as? String,
+                  let data = Data(base64Encoded: encoded),
+                  let image = Self.thumbnail(from: data, maxPixelSize: 512) else { continue }
+            let key = "\(item["title"] as? String ?? "")|\(item["artist"] as? String ?? "")"
+            guard artworkKey[bundle] != key else { continue }
+            artworkKey[bundle] = key
+            store(artwork: image, for: bundle)
+        }
+
         let previous = Dictionary(sources.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
         var parsed: [MediaSource] = []
         for item in raw {
@@ -327,13 +341,58 @@ final class NowPlayingService {
             // Re-entering the active slot is a good moment to re-read its artwork.
             if lastActiveID != active.id { artworkKey[active.id] = nil }
             lastActiveID = active.id
-            refreshArtwork(for: active)
         } else {
             lastActiveID = nil
+        }
+        // The cover follows what is on screen: a scriptable player can supply it even when another
+        // session owns the command slot.
+        if let shown = parsed.first(where: { $0.id == selectedID }) ?? parsed.first(where: { $0.isActive }) {
+            refreshArtwork(for: shown)
         }
 
         if lastTrackKey != previousKey, !lastTrackKey.isEmpty, isPlaying {
             onTrackChange?()
+        }
+    }
+
+    /// Artwork for a session that does not hold the command slot can only come from the player
+    /// itself: MediaRemote's per-client info carries artwork metadata but never the image.
+    private static func scriptedArtwork(for bundle: String) async -> NSImage? {
+        let script: String
+        if bundle == "com.apple.Music" {
+            script = """
+            tell application "Music"
+                if (count of artworks of current track) is 0 then return missing value
+                return data of artwork 1 of current track
+            end tell
+            """
+        } else if bundle == "com.spotify.client" {
+            script = "tell application \"Spotify\" to return artwork url of current track"
+        } else {
+            return nil
+        }
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                var error: NSDictionary?
+                let result = NSAppleScript(source: script)?.executeAndReturnError(&error)
+                if let error {
+                    NSLog("[NowPlaying] artwork script failed: \(error)")
+                    continuation.resume(returning: nil)
+                    return
+                }
+                if let data = result?.data, let image = NSImage(data: data) {
+                    continuation.resume(returning: image)
+                    return
+                }
+                // Spotify hands back a URL instead of pixels.
+                if let urlString = result?.stringValue, let url = URL(string: urlString),
+                   let data = try? Data(contentsOf: url), let image = NSImage(data: data) {
+                    continuation.resume(returning: image)
+                    return
+                }
+                continuation.resume(returning: nil)
+            }
         }
     }
 
@@ -348,7 +407,12 @@ final class NowPlayingService {
             // Players publish the cover a moment after the metadata, so the first read often comes
             // back empty. Retry briefly before giving up until the next track.
             for attempt in 1...4 {
-                if let loaded = await Self.loadActiveArtwork() {
+                if let scripted = await Self.scriptedArtwork(for: source.bundleID) {
+                    self?.store(artwork: scripted, for: source.bundleID)
+                    self?.artworkKey[source.bundleID] = key
+                    break
+                }
+                if let loaded = await Self.loadActiveArtwork(), loaded.bundle == source.bundleID {
                     self?.store(artwork: loaded.image, for: loaded.bundle)
                     self?.artworkKey[source.bundleID] = key
                     break

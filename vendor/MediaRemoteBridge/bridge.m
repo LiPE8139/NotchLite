@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 #include <dlfcn.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 typedef void (*GetClientsFn)(dispatch_queue_t, void (^)(NSArray *));
 typedef id   (*GetOriginFn)(void);

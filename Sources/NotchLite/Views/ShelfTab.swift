@@ -45,12 +45,12 @@ struct ShelfTab: View {
             }
 
             actions(shelf)
-                .offset(x: actionsIn ? 0 : -26)
+                .offset(x: actionsIn ? 0 : 26)
                 .opacity(actionsIn ? 1 : 0)
         }
         .onAppear {
             actionsIn = false
-            withAnimation(.spring(response: 0.46, dampingFraction: 0.55).delay(0.06)) {
+            withAnimation(.spring(response: 0.46, dampingFraction: 0.5).delay(0.06)) {
                 actionsIn = true
             }
         }
