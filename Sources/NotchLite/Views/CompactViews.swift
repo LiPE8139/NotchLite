@@ -125,7 +125,7 @@ private struct WingControl: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        .scaleEffect(hovering ? 1.12 : 1)
+        .scaleEffect(hovering ? 1.06 : 1)
         .animation(.spring(response: 0.26, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }
         .help(help)

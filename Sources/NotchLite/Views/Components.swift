@@ -263,7 +263,7 @@ struct IconButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
-        .scaleEffect(hovering ? 1.1 : 1)
+        .scaleEffect(hovering ? 1.06 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }
         .help(help)
