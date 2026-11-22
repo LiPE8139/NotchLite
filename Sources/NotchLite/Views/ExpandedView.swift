@@ -44,7 +44,9 @@ struct ExpandedView: View {
 
             Color.clear.frame(width: model.notchSize.width + 10)
 
-            HStack(spacing: 4) {
+            // The strip's own trailing padding already separates it from the gear, so the stack
+            // spacing can be minimal: this is what shifts the strip right without moving the gear.
+            HStack(spacing: 1) {
                 if model.media.sources.count > 1 {
                     // A strip that stays three chips wide: past that it scrolls with a two-finger
                     // swipe instead of squeezing the row into the notch.
