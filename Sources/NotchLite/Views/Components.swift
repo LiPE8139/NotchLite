@@ -296,7 +296,6 @@ struct SwappingCover: View {
     @ViewState private var breathing = false
     /// Held-down squash and the iOS-style wobble that follows on release.
     @ViewState private var pressScale: CGFloat = 1
-    @ViewState private var skipScale: CGFloat = 1
     @ViewState private var tilt: Double = 0
 
     var body: some View {
@@ -307,7 +306,7 @@ struct SwappingCover: View {
                     .opacity(incomingOpacity)
             }
         }
-        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * pressScale * skipScale)
+        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * pressScale)
         // Rotating about the centre, the way iOS icons wiggle, rather than sliding sideways.
         .rotationEffect(.degrees(tilt))
         .onChange(of: media.playControlPressed) { _, pressed in
@@ -319,11 +318,15 @@ struct SwappingCover: View {
             }
         }
         .onChange(of: media.skipControlPressed) { _, pressed in
-            // Skip buttons share the squash, but release straight back: no wobble.
+            // Skip buttons drive the same scale the swap animation uses, so releasing hands over
+            // to the shrink instead of springing back first — that bounce read as a second dip.
             if pressed {
-                withAnimation(.easeOut(duration: 0.09)) { skipScale = 0.93 }
+                withAnimation(.easeOut(duration: 0.09)) { coverScale = 0.93 }
             } else {
-                withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) { skipScale = 1 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                    guard !awaitingCover else { return }
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) { coverScale = 1 }
+                }
             }
         }
         .onChange(of: media.coverRequestID) { _, _ in begin() }
