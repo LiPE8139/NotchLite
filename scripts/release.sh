@@ -124,9 +124,9 @@ release_public() {
     shasum -a 256 "$dmg" | awk '{print "    SHA256:", $1}'
 
     info "推送 main"
-    git push origin "$PUBLIC_BRANCH:main" | tail -1
+    git_ssh git push origin "$PUBLIC_BRANCH:main" | tail -1
     git tag -f "v$version" HEAD >/dev/null
-    git push -f origin "v$version" | tail -1
+    git_ssh git push -f origin "v$version" | tail -1
 
     info "创建 Release"
     local body; body="$(mktemp)"
