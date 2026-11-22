@@ -44,7 +44,9 @@ private struct MediaCard: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
                     ScrubBar(media: media)
+                        .padding(.top, 4)
                     controls
+                        .padding(.top, 5)
                 }
             }
         } else {
