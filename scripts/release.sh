@@ -111,7 +111,14 @@ release_public() {
     ln -s /Applications build/dmg/Applications
     local dmg="build/NotchLite-$version.dmg" zip="build/NotchLite-$version.zip"
     rm -f "$dmg" "$zip"
-    hdiutil create -volname NotchLite -srcfolder build/dmg -ov -format UDZO "$dmg" >/dev/null
+    # A stale mount from an earlier build makes hdiutil fail with "Resource busy".
+    if [ -d /Volumes/NotchLite ]; then
+        hdiutil detach /Volumes/NotchLite -force >/dev/null 2>&1 || true
+    fi
+    if ! hdiutil create -volname NotchLite -srcfolder build/dmg -ov -format UDZO "$dmg" >/dev/null 2>&1; then
+        hdiutil detach /Volumes/NotchLite -force >/dev/null 2>&1 || true
+        hdiutil create -volname NotchLite -srcfolder build/dmg -ov -format UDZO "$dmg" >/dev/null
+    fi
     ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
     ok "$(basename "$dmg") $(du -h "$dmg" | cut -f1) / $(basename "$zip") $(du -h "$zip" | cut -f1)"
     shasum -a 256 "$dmg" | awk '{print "    SHA256:", $1}'
