@@ -28,27 +28,32 @@ private struct MediaCard: View {
                 // Fixed to the cover's height and top-aligned with it, so the two columns share one
                 // baseline at both ends instead of each centring itself.
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 6) {
-                        MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
-                        if media.supportsLike {
-                            // NetEase cannot report the flag, so its heart only lights while the
-                            // optimistic value is set right after the press.
-                            let liked = media.isLoved
-                            Button { media.toggleLoved() } label: {
-                                Image(systemName: liked ? "heart.fill" : "heart")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(liked ? Color.red : Color.white.opacity(0.4))
-                                    .contentShape(Rectangle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
+                            if media.supportsLike {
+                                // NetEase cannot report the flag, so its heart only lights while the
+                                // optimistic value is set right after the press.
+                                let liked = media.isLoved
+                                Button { media.toggleLoved() } label: {
+                                    Image(systemName: liked ? "heart.fill" : "heart")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(liked ? Color.red : Color.white.opacity(0.4))
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .help(liked ? "Remove from loved" : "Love this track")
                             }
-                            .buttonStyle(.plain)
-                            .help(liked ? "Remove from loved" : "Love this track")
                         }
-                    }
-                    Text(media.artist.isEmpty ? (media.album.isEmpty ? "Not playing" : media.album) : media.artist)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                        .padding(.top, 3)
+                        Text(media.artist.isEmpty ? (media.album.isEmpty ? "Not playing" : media.album) : media.artist)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                        }
+
+                    // Same treatment as the cover: a new identity per track cross-fades the text.
+                    .id(media.trackIdentity)
+                    .transition(.opacity)
                     // Breathing room between the text and the timeline.
                     Spacer(minLength: 6)
                     ScrubBar(media: media)
@@ -57,6 +62,7 @@ private struct MediaCard: View {
                         .padding(.top, 6)
                 }
                 .frame(height: MediaCard.coverSize, alignment: .top)
+                .animation(.easeInOut(duration: 0.45), value: media.trackIdentity)
             }
         } else {
             HStack(spacing: 14) {

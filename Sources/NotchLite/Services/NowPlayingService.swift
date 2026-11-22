@@ -128,6 +128,12 @@ final class NowPlayingService {
 
     func elapsed(at date: Date) -> TimeInterval { selected?.elapsed(at: date) ?? 0 }
 
+    /// Changes whenever the shown track does; drives the text cross-fade.
+    var trackIdentity: String {
+        guard let selected else { return "" }
+        return "\(selected.bundleID)|\(selected.title)|\(selected.artist)"
+    }
+
     /// Bumped whenever a new cover is stored, so views can cross-fade on the image itself rather
     /// than on the track metadata (which arrives well before the artwork does).
     private var artworkVersion: [String: Int] = [:]
