@@ -83,7 +83,7 @@ private struct MediaCard: View {
             }
             .overlay(alignment: .center) {
                 if artworkHovering {
-                    playPauseBadge
+                    appBadge
                         .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
             }
@@ -100,24 +100,30 @@ private struct MediaCard: View {
             .help("Open the playing app")
     }
 
-    /// Play/pause affordance that morphs between its two glyphs, the way morphicons does:
-    /// the shapes interpolate rather than one fading over the other.
-    private var playPauseBadge: some View {
+    /// The player's own icon, shown on hover: one click brings that app forward. Playback is left
+    /// to the transport controls, so the cover stays a shortcut to the app.
+    @ViewBuilder
+    private var appBadge: some View {
         Button {
-            media.togglePlayPause()
+            media.openPlayerApp()
         } label: {
-            Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 46, height: 46)
-                .background(Circle().fill(.black.opacity(0.45)))
-                .background(Circle().fill(.ultraThinMaterial))
-                .contentShape(Circle())
+            Group {
+                if let icon = media.playerIcon {
+                    Image(nsImage: icon).resizable()
+                } else {
+                    Image(systemName: "arrow.up.forward.app.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .padding(7)
+            .background(Circle().fill(.black.opacity(0.45)))
+            .background(Circle().fill(.ultraThinMaterial))
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .animation(MediaMotion.spring, value: media.isPlaying)
-        .help(media.isPlaying ? "Pause" : "Play")
+        .help("Open \(media.displayName)")
     }
 
     private var controls: some View {
