@@ -4,6 +4,9 @@ struct IslandRootView: View {
     let model: IslandModel
 
     private let spring = Animation.spring(response: 0.42, dampingFraction: 0.78)
+    /// Size changes must not overshoot: a bouncy height briefly leaves the bottom edge of the
+    /// shape visible below the content.
+    private let resize = Animation.spring(response: 0.42, dampingFraction: 1.0)
 
     var body: some View {
         let presentation = model.presentation
@@ -32,8 +35,8 @@ struct IslandRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
         .animation(spring, value: presentation)
-        .animation(spring, value: model.islandSize)
-        .animation(spring, value: model.islandOffset)
+        .animation(resize, value: model.islandSize)
+        .animation(resize, value: model.islandOffset)
         .animation(spring, value: model.tab)
         .environment(\.colorScheme, .dark)
     }
