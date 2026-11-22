@@ -81,13 +81,7 @@ private struct MediaCard: View {
                     Image(nsImage: icon).resizable().frame(width: 26, height: 26).offset(x: 7, y: 7)
                 }
             }
-            .overlay(alignment: .center) {
-                if artworkHovering {
-                    appBadge
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                }
-            }
-            .scaleEffect(artworkHovering ? 1.06 : (media.isPlaying ? 1 : 0.92))
+            .scaleEffect(artworkHovering ? 1.1 : (media.isPlaying ? 1 : 0.92))
             .onHover { artworkHovering = $0 }
             .animation(MediaMotion.spring, value: artworkHovering)
             .animation(MediaMotion.spring, value: media.isPlaying)
@@ -98,32 +92,6 @@ private struct MediaCard: View {
                 else if value.translation.height > 24 { media.selectPrevious() }
             })
             .help("Open the playing app")
-    }
-
-    /// The player's own icon, shown on hover: one click brings that app forward. Playback is left
-    /// to the transport controls, so the cover stays a shortcut to the app.
-    @ViewBuilder
-    private var appBadge: some View {
-        Button {
-            media.openPlayerApp()
-        } label: {
-            Group {
-                if let icon = media.playerIcon {
-                    Image(nsImage: icon).resizable()
-                } else {
-                    Image(systemName: "arrow.up.forward.app.fill")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-            }
-            .frame(width: 32, height: 32)
-            .padding(7)
-            .background(Circle().fill(.black.opacity(0.45)))
-            .background(Circle().fill(.ultraThinMaterial))
-            .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help("Open \(media.displayName)")
     }
 
     private var controls: some View {
