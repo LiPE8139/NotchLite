@@ -96,7 +96,6 @@ struct ShelfTab: View {
                 }
                 .disabled(!hasItems)
             }
-            .opacity(hasItems ? 1 : 0.7)
 
             if hasItems {
                 Text(shelf.selection.isEmpty

@@ -255,12 +255,14 @@ struct IconButton: View {
     let action: () -> Void
 
     @ViewState private var hovering = false
+    /// Dimmed while disabled: the shelf's actions are dead until something is on the shelf.
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
-                .shadow(color: hovering ? Color.white.opacity(0.9) : .clear,
+                .shadow(color: isEnabled && hovering ? Color.white.opacity(0.9) : .clear,
                         radius: hovering ? 8 : 0)
                 .frame(width: size + 16, height: size + 16)
                 .contentShape(Circle())
@@ -268,10 +270,13 @@ struct IconButton: View {
         .buttonStyle(PressableButtonStyle())
         .onLongPressGesture(minimumDuration: .infinity, maximumDistance: .infinity) {
         } onPressingChanged: { pressing in
+            guard isEnabled else { return }
             onPressChange?(pressing)
         }
-        .scaleEffect(hovering ? 1.1 : 1)
+        .scaleEffect(isEnabled && hovering ? 1.1 : 1)
+        .opacity(isEnabled ? 1 : 0.3)
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
+        .animation(.easeInOut(duration: 0.2), value: isEnabled)
         .onHover { hovering = $0 }
         .help(help)
     }
