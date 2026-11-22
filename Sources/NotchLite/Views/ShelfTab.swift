@@ -97,15 +97,18 @@ struct ShelfTab: View {
                 .disabled(!hasItems)
             }
 
-            if hasItems {
-                Text(shelf.selection.isEmpty
-                     ? String(localized: "\(shelf.items.count) items")
-                     : String(localized: "\(shelf.targets.count) of \(shelf.items.count) selected"))
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.4))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 60)
-            }
+            // Always present, only invisible when empty: adding the first item used to change the
+            // column's height and shift every button above it.
+            Text(hasItems
+                 ? (shelf.selection.isEmpty
+                    ? String(localized: "\(shelf.items.count) items")
+                    : String(localized: "\(shelf.targets.count) of \(shelf.items.count) selected"))
+                 : " ")
+            .font(.system(size: 10, weight: .medium).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.4))
+            .multilineTextAlignment(.center)
+            .frame(width: 60)
+            .opacity(hasItems ? 1 : 0)
         }
         .frame(width: 60)
     }
