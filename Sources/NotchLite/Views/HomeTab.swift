@@ -43,7 +43,6 @@ private struct MediaCard: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
-                    Spacer(minLength: 2)
                     ScrubBar(media: media)
                     controls
                 }
@@ -103,10 +102,10 @@ private struct MediaCard: View {
 
     private var controls: some View {
         HStack(spacing: 18) {
-            IconButton(symbol: "backward.fill", size: 15) { media.previous() }
-            IconButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 22) { media.togglePlayPause() }
+            IconButton(symbol: "backward.fill", size: 13) { media.previous() }
+            IconButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 18) { media.togglePlayPause() }
                 .contentTransition(.symbolEffect(.replace))
-            IconButton(symbol: "forward.fill", size: 15) { media.next() }
+            IconButton(symbol: "forward.fill", size: 13) { media.next() }
         }
         .frame(maxWidth: .infinity)
         .animation(MediaMotion.spring, value: media.isPlaying)
