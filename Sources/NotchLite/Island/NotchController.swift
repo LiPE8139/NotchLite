@@ -11,6 +11,7 @@ final class NotchController {
     private let panel = NotchPanel()
     private var screen: NSScreen?
     private var monitors: [Any] = []
+
     private var hoverTask: Task<Void, Never>?
     private var hoverControlsTask: Task<Void, Never>?
     private var shelfHotKey: HotKey?
@@ -195,7 +196,10 @@ final class NotchController {
         // non-activating panel ignored the trackpad.
         if let scroll = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { [weak self] event in
             guard let self, self.model.isExpanded, !self.isMenuOpen else { return event }
-            guard self.model.stripFrame.insetBy(dx: -6, dy: -6).contains(event.locationInWindow) else { return event }
+            // SwiftUI reports frames top-left origin; the event comes bottom-left origin.
+            let height = self.panel.contentView?.bounds.height ?? 0
+            let point = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
+            guard self.model.stripFrame.insetBy(dx: -6, dy: -6).contains(point) else { return event }
             let delta = event.scrollingDeltaX
             guard delta != 0 else { return event }
             self.model.stripScroll = min(0, max(-self.model.stripMaxScroll,
