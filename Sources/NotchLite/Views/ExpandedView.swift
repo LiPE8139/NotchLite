@@ -15,8 +15,8 @@ struct ExpandedView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 22)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
         .padding(.horizontal, Metrics.expandedTopRadius)
         .foregroundStyle(.white)

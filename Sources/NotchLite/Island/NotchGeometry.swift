@@ -37,7 +37,7 @@ enum Metrics {
     static let expandedWidth: CGFloat = 460
     /// How much wider than the notch the expanded island must stay for the header to fit.
     static let expandedBleed: CGFloat = 200
-    static let expandedContentHeight: CGFloat = 156
+    static let expandedContentHeight: CGFloat = 144
     /// Banner peeks: label font, icon column and the room the battery badge needs on the right.
     static let peekFontSize: CGFloat = 13
     static let peekIconWidth: CGFloat = 16
