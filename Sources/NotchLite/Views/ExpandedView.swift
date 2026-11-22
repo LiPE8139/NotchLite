@@ -48,7 +48,8 @@ struct ExpandedView: View {
                 if model.media.sources.count > 1 {
                     // A strip that stays three chips wide: past that it scrolls with a two-finger
                     // swipe instead of squeezing the row into the notch.
-                    SourceStrip(count: model.media.sources.count) {
+                    SourceStrip(count: model.media.sources.count,
+                                selectedID: model.media.selected?.id) {
                         HStack(spacing: 3) {
                             ForEach(model.media.sources) { source in
                                 SourceChip(source: source,
@@ -131,6 +132,7 @@ private struct SourceChip: View {
 /// with soft edges hinting there is more to the side.
 private struct SourceStrip<Content: View>: View {
     let count: Int
+    let selectedID: String?
     @ViewBuilder var content: Content
 
     private var chipWidth: CGFloat { 20 }
@@ -140,19 +142,33 @@ private struct SourceStrip<Content: View>: View {
     var body: some View {
         // Cell width, gaps, and 4pt of slack so the 1.18× selected icon is not clipped.
         let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
-        ScrollView(.horizontal, showsIndicators: false) {
-            content
-                .scrollTargetLayout()
-                .padding(.leading, 4)
-                .padding(.trailing, 4)
-                .padding(.vertical, 2)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                content
+                    .scrollTargetLayout()
+                    .padding(.leading, 4)
+                    .padding(.trailing, 4)
+                    .padding(.vertical, 2)
+            }
+            .frame(width: width)
+            // Rest on a chip, never half way across one: a partly scrolled chip used to read as if
+            // the notch were covering it.
+            .scrollTargetBehavior(.viewAligned)
+            .mask(edgeFade)
+            .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
+            // Picking a player brings it to the middle of the strip, so the current session is
+            // never half hidden at an edge.
+            .onChange(of: selectedID) { _, id in
+                guard let id else { return }
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
+                    proxy.scrollTo(id, anchor: .center)
+                }
+            }
+            .onAppear {
+                guard let id = selectedID else { return }
+                proxy.scrollTo(id, anchor: .center)
+            }
         }
-        .frame(width: width)
-        // Rest on a chip, never half way across one: a partly scrolled chip used to read as if the
-        // notch were covering it.
-        .scrollTargetBehavior(.viewAligned)
-        .mask(edgeFade)
-        .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
     }
 
     /// A soft right edge hints that more players are waiting; the left edge stays solid so the
