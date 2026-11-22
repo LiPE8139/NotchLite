@@ -170,6 +170,12 @@ final class NowPlayingService {
     }
 
     /// Player icon, also used by the session switcher in the header.
+    /// The player icon's own dominant colour, used for glows.
+    func accentColor(for bundle: String) -> Color {
+        _ = icon(for: bundle)
+        return accents[bundle] ?? .white
+    }
+
     func icon(for bundle: String) -> NSImage {
         if let cached = icons[bundle] { return cached }
         let image: NSImage

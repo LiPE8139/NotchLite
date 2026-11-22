@@ -57,7 +57,8 @@ struct ExpandedView: View {
                             ForEach(model.media.sources) { source in
                                 SourceChip(source: source,
                                            selected: source.id == model.media.selected?.id,
-                                           icon: model.media.icon(for: source.bundleID)) {
+                                           icon: model.media.icon(for: source.bundleID),
+                                           accent: model.media.accentColor(for: source.bundleID)) {
                                     model.media.select(source.id)
                                     // Picking a player from the header should show it, wherever we are.
                                     model.tab = .home
@@ -104,6 +105,8 @@ private struct SourceChip: View {
     let source: MediaSource
     let selected: Bool
     let icon: NSImage
+    /// The icon's own colour, so the glow matches the app rather than washing it white.
+    let accent: Color
     let action: () -> Void
 
     @ViewState private var hovering = false
@@ -119,7 +122,7 @@ private struct SourceChip: View {
                 .opacity(selected ? 1 : (hovering ? 0.85 : 0.45))
                 // Kept small enough to stay inside the strip's 7pt inset and the row's padding,
                 // so it never gets clipped by the panel edge.
-                .shadow(color: selected ? .white.opacity(0.6) : (hovering ? .white.opacity(0.3) : .clear),
+                .shadow(color: selected ? accent.opacity(0.5) : (hovering ? accent.opacity(0.25) : .clear),
                         radius: selected ? 3 : 2)
                 .padding(2)
                 .contentShape(Rectangle())
