@@ -1,12 +1,9 @@
 .build/
-.build-prof/
-build/
-dist/
-.DS_Store
-.swiftpm/
+.cache/
 .tmp/
 .mc/
-.cache/
-tools/procstat
-tools/postnotify
+build/
 backups/
+.deploy/
+*.zip
+.DS_Store
