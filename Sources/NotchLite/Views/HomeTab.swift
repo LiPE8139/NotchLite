@@ -123,11 +123,13 @@ private struct MediaCard: View {
 
     private var controls: some View {
         HStack(spacing: 22) {
-            IconButton(symbol: "backward.fill", size: 15) { media.previous() }
+            IconButton(symbol: "backward.fill", size: 15,
+                       onPressChange: { media.setSkipControlPressed($0) }) { media.previous() }
             IconButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 22,
                        onPressChange: { media.setPlayControlPressed($0) }) { media.togglePlayPause() }
                 .contentTransition(.symbolEffect(.replace))
-            IconButton(symbol: "forward.fill", size: 15) { media.next() }
+            IconButton(symbol: "forward.fill", size: 15,
+                       onPressChange: { media.setSkipControlPressed($0) }) { media.next() }
         }
         .frame(maxWidth: .infinity)
         .animation(MediaMotion.spring, value: media.isPlaying)

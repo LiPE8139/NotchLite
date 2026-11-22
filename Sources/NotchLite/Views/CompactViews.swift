@@ -92,12 +92,14 @@ private struct TransportControls: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            WingControl(symbol: "backward.fill", size: 12, glow: media.accent, help: "Previous") { media.previous() }
+            WingControl(symbol: "backward.fill", size: 12, glow: media.accent, help: "Previous",
+                        onPressChange: { media.setSkipControlPressed($0) }) { media.previous() }
             // Play/pause is the primary action, so it reads a size larger than its neighbours.
             WingControl(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 16,
                         glow: media.accent, help: "Play or pause",
                         onPressChange: { media.setPlayControlPressed($0) }) { media.togglePlayPause() }
-            WingControl(symbol: "forward.fill", size: 12, glow: media.accent, help: "Next") { media.next() }
+            WingControl(symbol: "forward.fill", size: 12, glow: media.accent, help: "Next",
+                        onPressChange: { media.setSkipControlPressed($0) }) { media.next() }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.68), value: media.isPlaying)
         .disabled(!media.canControl)

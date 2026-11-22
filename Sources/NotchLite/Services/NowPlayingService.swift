@@ -75,9 +75,17 @@ final class NowPlayingService {
     /// True while the play/pause control is held down; covers shrink on press and shake on release.
     private(set) var playControlPressed = false
 
+    /// True while a skip control is held; covers shrink but do not wobble on release.
+    private(set) var skipControlPressed = false
+
     func setPlayControlPressed(_ pressed: Bool) {
         guard playControlPressed != pressed else { return }
         playControlPressed = pressed
+    }
+
+    func setSkipControlPressed(_ pressed: Bool) {
+        guard skipControlPressed != pressed else { return }
+        skipControlPressed = pressed
     }
     /// Like state per player. Keyed by bundle id: each app has its own flag, and switching sources
     /// must not carry the previous one's heart along.

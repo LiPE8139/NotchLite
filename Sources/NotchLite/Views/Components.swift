@@ -296,6 +296,7 @@ struct SwappingCover: View {
     @ViewState private var breathing = false
     /// Held-down squash and the iOS-style wobble that follows on release.
     @ViewState private var pressScale: CGFloat = 1
+    @ViewState private var skipScale: CGFloat = 1
     @ViewState private var tilt: Double = 0
 
     var body: some View {
@@ -306,7 +307,7 @@ struct SwappingCover: View {
                     .opacity(incomingOpacity)
             }
         }
-        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * pressScale)
+        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * pressScale * skipScale)
         // Rotating about the centre, the way iOS icons wiggle, rather than sliding sideways.
         .rotationEffect(.degrees(tilt))
         .onChange(of: media.playControlPressed) { _, pressed in
@@ -315,6 +316,14 @@ struct SwappingCover: View {
             } else {
                 withAnimation(.spring(response: 0.26, dampingFraction: 0.45)) { pressScale = 1 }
                 startSway()
+            }
+        }
+        .onChange(of: media.skipControlPressed) { _, pressed in
+            // Skip buttons share the squash, but release straight back: no wobble.
+            if pressed {
+                withAnimation(.easeOut(duration: 0.09)) { skipScale = 0.93 }
+            } else {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) { skipScale = 1 }
             }
         }
         .onChange(of: media.coverRequestID) { _, _ in begin() }
@@ -328,10 +337,10 @@ struct SwappingCover: View {
 
     /// iOS-style wobble: a few decaying rotations around the centre, then rest.
     private func startSway() {
-        let steps: [Double] = [4, -4, 3, -2.2, 1.4, -0.7, 0]
+        let steps: [Double] = [3.5, -3.5, 2.6, -1.9, 1.2, -0.6, 0]
         for (index, value) in steps.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07 * Double(index)) {
-                withAnimation(.easeInOut(duration: 0.07)) { tilt = value }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05 * Double(index)) {
+                withAnimation(.easeInOut(duration: 0.05)) { tilt = value }
             }
         }
     }
