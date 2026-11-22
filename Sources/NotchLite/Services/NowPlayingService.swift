@@ -128,6 +128,12 @@ final class NowPlayingService {
 
     func elapsed(at date: Date) -> TimeInterval { selected?.elapsed(at: date) ?? 0 }
 
+    /// Changes whenever the shown track does; used to cross-fade the cover.
+    var trackIdentity: String {
+        guard let selected else { return "" }
+        return "\(selected.bundleID)|\(selected.title)|\(selected.artist)"
+    }
+
     /// Player icon, also used by the session switcher in the header.
     func icon(for bundle: String) -> NSImage {
         if let cached = icons[bundle] { return cached }

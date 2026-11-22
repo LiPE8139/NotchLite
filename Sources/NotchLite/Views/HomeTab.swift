@@ -72,7 +72,13 @@ private struct MediaCard: View {
     }
 
     private var artwork: some View {
-        ArtworkView(image: media.artwork, size: 96, corner: 18)
+        ZStack {
+            ArtworkView(image: media.artwork, size: 96, corner: 18)
+                // A new identity per track, so the change cross-fades instead of snapping.
+                .id(media.trackIdentity)
+                .transition(.opacity)
+        }
+        .animation(.easeInOut(duration: 0.28), value: media.trackIdentity)
             // Hovering lifts the cover and glows in the album's own colour.
             .shadow(color: media.accent.opacity(artworkHovering ? 0.85 : 0.55),
                     radius: artworkHovering ? 26 : 16)

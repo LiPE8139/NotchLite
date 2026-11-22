@@ -8,6 +8,8 @@ struct CompactWingsView: View {
         let media = model.media
         WingsLayout(notchWidth: model.notchSize.width, height: model.notchSize.height) {
             ArtworkView(image: media.artwork, size: 24, corner: 7)
+                .id(media.trackIdentity)
+                .transition(.opacity)
                 .allowsHitTesting(false)
         } trailing: {
             if model.isHovering && model.canShowWings {
@@ -17,6 +19,7 @@ struct CompactWingsView: View {
                     .allowsHitTesting(false)
             }
         }
+        .animation(.easeInOut(duration: 0.28), value: media.trackIdentity)
     }
 }
 
