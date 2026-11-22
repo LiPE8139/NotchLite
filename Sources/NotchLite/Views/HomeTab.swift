@@ -14,56 +14,20 @@ enum MediaMotion {
     static let spring = Animation.spring(response: 0.34, dampingFraction: 0.68)
 }
 
-/// Cross-fades and dips the cover from one image to the next.
-///
-/// Both the scale and the dissolve come from the same `progress`, so there is only ever one
-/// animation running: no hand-off between shrink, fade and bounce, hence no seams.
-private struct SwappingArtwork: View, Animatable {
-    var progress: Double
-    let old: NSImage?
-    let new: NSImage?
-    let size: CGFloat
-    let corner: CGFloat
-
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    var body: some View {
-        let p = min(max(progress, 0), 1)
-        // Deepest at the middle of the transition, back to full size at both ends.
-        let dip = sin(p * .pi)
-        let scale = 1 - 0.14 * dip
-        // Dissolve happens across the middle band, while the tile is at its smallest.
-        let fade = smoothstep(0.15, 0.85, p)
-
-        return ZStack {
-            ArtworkView(image: old, size: size, corner: corner)
-            ArtworkView(image: new, size: size, corner: corner)
-                .opacity(fade)
-        }
-        .scaleEffect(scale)
-    }
-
-    private func smoothstep(_ edge0: Double, _ edge1: Double, _ x: Double) -> Double {
-        let t = min(max((x - edge0) / (edge1 - edge0), 0), 1)
-        return t * t * (3 - 2 * t)
-    }
-}
-
 private struct MediaCard: View {
     /// The cover's edge length; the text column is pinned to the same height.
     static let coverSize: CGFloat = 112
 
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
-    /// The cover actually on screen, and the pair used while a change is animating.
+    /// The cover actually on screen, and the incoming one while a change is loading.
     @ViewState private var shownArtwork: NSImage?
-    @ViewState private var swapFrom: NSImage?
-    @ViewState private var swapTo: NSImage?
-    /// A single value drives the whole cover change: 0 = old cover, 1 = new cover.
-    @ViewState private var swapProgress: Double = 1
+    @ViewState private var incomingArtwork: NSImage?
+    @ViewState private var incomingOpacity: Double = 0
+    /// Scale of the tile: shrinks the moment the user asks for another track.
+    @ViewState private var coverScale: CGFloat = 1
+    /// True from the click until the new cover has been swapped in.
+    @ViewState private var awaitingCover = false
 
     var body: some View {
         if media.hasMedia {
@@ -131,28 +95,57 @@ private struct MediaCard: View {
         }
     }
 
-    private var artwork: some View {
-        SwappingArtwork(progress: swapProgress,
-                        old: swapFrom ?? media.artwork,
-                        new: swapTo ?? media.artwork,
-                        size: MediaCard.coverSize,
-                        corner: 22)
-            .onChange(of: media.artworkIdentity) { _, _ in
-                let next = media.artwork
-                swapFrom = shownArtwork ?? next
-                swapTo = next
-                swapProgress = 0
-                // Reset and animate in separate turns, otherwise both changes coalesce and the
-                // progress jumps straight to 1 with no animation at all.
-                DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.42)) { swapProgress = 1 }
-                }
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(440))
-                    shownArtwork = next
-                }
+    /// Called the instant the user asks for another track: the tile reacts immediately instead of
+    /// waiting for the artwork to arrive.
+    private func beginCoverLoad() {
+        guard !awaitingCover else { return }
+        awaitingCover = true
+        withAnimation(.easeIn(duration: 0.14)) { coverScale = 0.86 }
+        // Nothing arrived (a player with no artwork): go back to full size.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard awaitingCover else { return }
+            finishCoverSwap(with: nil)
+        }
+    }
+
+    /// Dissolves the old cover into the new one while the tile is small, then grows it back.
+    private func swapIn(_ next: NSImage?) {
+        incomingArtwork = next
+        incomingOpacity = 0
+        // Next turn, so the incoming tile is laid out at 0 before it fades in.
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.26)) { incomingOpacity = 1 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(270))
+                finishCoverSwap(with: next)
             }
-            .onAppear { shownArtwork = media.artwork }
+        }
+    }
+
+    private func finishCoverSwap(with next: NSImage?) {
+        if let next { shownArtwork = next }
+        incomingArtwork = nil
+        incomingOpacity = 0
+        awaitingCover = false
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { coverScale = 1 }
+    }
+
+    private var artwork: some View {
+        ZStack {
+            ArtworkView(image: shownArtwork ?? media.artwork, size: MediaCard.coverSize, corner: 22)
+            if let incoming = incomingArtwork {
+                ArtworkView(image: incoming, size: MediaCard.coverSize, corner: 22)
+                    .opacity(incomingOpacity)
+            }
+        }
+        .scaleEffect(coverScale)
+        .onChange(of: media.artworkIdentity) { _, _ in
+            // No click involved (the track ended by itself): start the same sequence now.
+            if !awaitingCover { beginCoverLoad() }
+            swapIn(media.artwork)
+        }
+        .onAppear { shownArtwork = media.artwork }
             // Hovering lifts the cover and glows in the album's own colour.
             .shadow(color: media.accent.opacity(artworkHovering ? 0.85 : 0.55),
                     radius: artworkHovering ? 26 : 16)
@@ -177,10 +170,10 @@ private struct MediaCard: View {
 
     private var controls: some View {
         HStack(spacing: 22) {
-            IconButton(symbol: "backward.fill", size: 15) { media.previous() }
+            IconButton(symbol: "backward.fill", size: 15) { beginCoverLoad(); media.previous() }
             IconButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 22) { media.togglePlayPause() }
                 .contentTransition(.symbolEffect(.replace))
-            IconButton(symbol: "forward.fill", size: 15) { media.next() }
+            IconButton(symbol: "forward.fill", size: 15) { beginCoverLoad(); media.next() }
         }
         .frame(maxWidth: .infinity)
         .animation(MediaMotion.spring, value: media.isPlaying)
