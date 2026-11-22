@@ -15,14 +15,19 @@ enum MediaMotion {
 }
 
 private struct MediaCard: View {
+    /// The cover's edge length; the text column is pinned to the same height.
+    static let coverSize: CGFloat = 104
+
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
 
     var body: some View {
         if media.hasMedia {
-            HStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
                 artwork
-                VStack(alignment: .leading, spacing: 4) {
+                // Fixed to the cover's height and top-aligned with it, so the two columns share one
+                // baseline at both ends instead of each centring itself.
+                VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 6) {
                         MarqueeText(text: media.title, font: .system(size: 15, weight: .semibold), height: 19)
                         if media.supportsLike {
@@ -43,11 +48,15 @@ private struct MediaCard: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
+                        .padding(.top, 3)
+                    // Breathing room between the text and the timeline.
+                    Spacer(minLength: 6)
                     ScrubBar(media: media)
-                        .padding(.top, 4)
+                    // Snug against the timeline: the controls belong to it.
                     controls
-                        .padding(.top, 5)
+                        .padding(.top, 6)
                 }
+                .frame(height: MediaCard.coverSize, alignment: .top)
             }
         } else {
             HStack(spacing: 14) {
@@ -74,7 +83,7 @@ private struct MediaCard: View {
 
     private var artwork: some View {
         ZStack {
-            ArtworkView(image: media.artwork, size: 104, corner: 20)
+            ArtworkView(image: media.artwork, size: MediaCard.coverSize, corner: 20)
                 // Keyed on the artwork itself: the fade starts when the new image actually lands,
                 // not when the track metadata does.
                 .id(media.artworkIdentity)
@@ -104,10 +113,10 @@ private struct MediaCard: View {
 
     private var controls: some View {
         HStack(spacing: 22) {
-            IconButton(symbol: "backward.fill", size: 16) { media.previous() }
-            IconButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 24) { media.togglePlayPause() }
+            IconButton(symbol: "backward.fill", size: 15) { media.previous() }
+            IconButton(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 22) { media.togglePlayPause() }
                 .contentTransition(.symbolEffect(.replace))
-            IconButton(symbol: "forward.fill", size: 16) { media.next() }
+            IconButton(symbol: "forward.fill", size: 15) { media.next() }
         }
         .frame(maxWidth: .infinity)
         .animation(MediaMotion.spring, value: media.isPlaying)
