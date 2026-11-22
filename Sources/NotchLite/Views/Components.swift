@@ -258,11 +258,13 @@ struct IconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
+                .shadow(color: hovering ? Color.white.opacity(0.55) : .clear,
+                        radius: hovering ? 6 : 0)
                 .frame(width: size + 16, height: size + 16)
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
-        .scaleEffect(hovering ? 1.06 : 1)
+        .scaleEffect(hovering ? 1.1 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }
         .help(help)

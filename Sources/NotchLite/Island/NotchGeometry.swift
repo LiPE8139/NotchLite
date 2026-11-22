@@ -27,7 +27,7 @@ enum Metrics {
     /// Width of each "wing" beside the notch in the compact live-activity state.
     static let wing: CGFloat = 36
     /// Wing width while the hover controls are showing: room for three buttons.
-    static let controlsWing: CGFloat = 78
+    static let controlsWing: CGFloat = 76
     /// Inner margin inside each wing: the cover sits this far from the island's outer edge.
     static let wingInset: CGFloat = 10
     /// How far the compact island's rounded shoulders reach past the notch on each side.
