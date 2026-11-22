@@ -432,6 +432,15 @@ final class NotchController {
     private func showSettingsMenu() {
         let menu = NSMenu()
 
+        // Version sits at the top of the menu so it is readable at a glance.
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let title = NSMenuItem(title: "NotchLite \(version)", action: nil, keyEquivalent: "")
+        title.isEnabled = false
+        menu.addItem(title)
+        menu.addItem(NSMenuItem(title: String(localized: "About NotchLite"),
+                                action: #selector(MenuTarget.showAbout), keyEquivalent: ""))
+        menu.addItem(.separator())
+
         let haptics = NSMenuItem(title: String(localized: "Haptic feedback"), action: #selector(MenuTarget.toggleHaptics), keyEquivalent: "")
         haptics.state = hapticsEnabled ? .on : .off
         menu.addItem(haptics)
@@ -496,6 +505,13 @@ private final class MenuTarget: NSObject {
     weak var controller: NotchController?
 
     init(controller: NotchController) { self.controller = controller }
+
+    @objc func showAbout() {
+        MainActor.assumeIsolated {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.orderFrontStandardAboutPanel(nil)
+        }
+    }
 
     @objc func toggleHaptics() { MainActor.assumeIsolated { controller?.toggleHaptics() } }
     @objc func toggleShake() { MainActor.assumeIsolated { controller?.toggleShake() } }
