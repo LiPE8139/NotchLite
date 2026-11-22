@@ -110,14 +110,18 @@ private struct MediaCard: View {
     }
 
     /// Dissolves the old cover into the new one while the tile is small, then grows it back.
+    /// The grow starts just before the dissolve ends, so the two motions overlap instead of
+    /// queueing up.
     private func swapIn(_ next: NSImage?) {
         incomingArtwork = next
         incomingOpacity = 0
         // Next turn, so the incoming tile is laid out at 0 before it fades in.
         DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.26)) { incomingOpacity = 1 }
+            withAnimation(.easeInOut(duration: 0.32)) { incomingOpacity = 1 }
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(270))
+                try? await Task.sleep(for: .milliseconds(280))
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { coverScale = 1 }
+                try? await Task.sleep(for: .milliseconds(60))
                 finishCoverSwap(with: next)
             }
         }
@@ -128,7 +132,9 @@ private struct MediaCard: View {
         incomingArtwork = nil
         incomingOpacity = 0
         awaitingCover = false
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { coverScale = 1 }
+        if coverScale != 1 {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { coverScale = 1 }
+        }
     }
 
     private var artwork: some View {
