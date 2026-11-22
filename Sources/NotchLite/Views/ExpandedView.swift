@@ -29,8 +29,8 @@ struct ExpandedView: View {
 
     /// Switching tabs slides the new page up from just below the notch while the old one fades.
     private static let tabIn = AnyTransition.asymmetric(
-        insertion: .opacity.combined(with: .offset(y: 10)).combined(with: .scale(scale: 0.985, anchor: .top)),
-        removal: .opacity.combined(with: .offset(y: -6)))
+        insertion: .opacity.combined(with: .offset(y: -10)).combined(with: .scale(scale: 0.985, anchor: .top)),
+        removal: .opacity.combined(with: .offset(y: 6)))
 
     private var header: some View {
         HStack(spacing: 0) {

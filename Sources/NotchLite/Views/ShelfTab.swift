@@ -3,6 +3,9 @@ import SwiftUI
 struct ShelfTab: View {
     let model: IslandModel
 
+    /// The action column enters from the left on its own, springier schedule than the page itself.
+    @ViewState private var actionsIn = false
+
     var body: some View {
         let shelf = model.shelf
         let targeted = model.isDropTargeted
@@ -42,6 +45,14 @@ struct ShelfTab: View {
             }
 
             actions(shelf)
+                .offset(x: actionsIn ? 0 : -26)
+                .opacity(actionsIn ? 1 : 0)
+        }
+        .onAppear {
+            actionsIn = false
+            withAnimation(.spring(response: 0.46, dampingFraction: 0.55).delay(0.06)) {
+                actionsIn = true
+            }
         }
         .onAppear { shelf.prune() }
     }
