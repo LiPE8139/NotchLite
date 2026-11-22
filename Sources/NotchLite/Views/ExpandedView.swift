@@ -45,14 +45,18 @@ struct ExpandedView: View {
 
             HStack(spacing: 8) {
                 if model.media.sources.count > 1 {
-                    HStack(spacing: 5) {
-                        ForEach(model.media.sources) { source in
-                            SourceChip(source: source,
-                                       selected: source.id == model.media.selected?.id,
-                                       icon: model.media.icon(for: source.bundleID)) {
-                                model.media.select(source.id)
-                                // Picking a player from the header should show it, wherever we are.
-                                model.tab = .home
+                    // A strip that stays three chips wide: past that it scrolls with a two-finger
+                    // swipe instead of squeezing the row into the notch.
+                    SourceStrip(count: model.media.sources.count) {
+                        HStack(spacing: 5) {
+                            ForEach(model.media.sources) { source in
+                                SourceChip(source: source,
+                                           selected: source.id == model.media.selected?.id,
+                                           icon: model.media.icon(for: source.bundleID)) {
+                                    model.media.select(source.id)
+                                    // Picking a player from the header should show it, wherever we are.
+                                    model.tab = .home
+                                }
                             }
                         }
                     }
@@ -120,5 +124,43 @@ private struct SourceChip: View {
         .animation(.spring(response: 0.28, dampingFraction: 0.64), value: hovering)
         .onHover { hovering = $0 }
         .help(source.displayName)
+    }
+}
+
+/// Three chips are always visible; more than that scrolls horizontally under a two-finger swipe,
+/// with soft edges hinting there is more to the side.
+private struct SourceStrip<Content: View>: View {
+    let count: Int
+    @ViewBuilder var content: Content
+
+    private var chipWidth: CGFloat { 20 }
+    private var spacing: CGFloat { 5 }
+    private var visible: Int { min(count, 3) }
+
+    var body: some View {
+        let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
+        ScrollView(.horizontal, showsIndicators: false) {
+            content
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+        }
+        .frame(width: width)
+        .mask(edgeFade)
+        .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
+    }
+
+    /// Only fades the sides that actually have content hidden behind them.
+    private var edgeFade: some View {
+        HStack(spacing: 0) {
+            if count > 3 {
+                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 8)
+            }
+            Rectangle()
+            if count > 3 {
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 8)
+            }
+        }
     }
 }
