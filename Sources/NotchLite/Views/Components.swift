@@ -288,6 +288,8 @@ struct SwappingCover: View {
     @ViewState private var coverScale: CGFloat = 1
     @ViewState private var awaitingCover = false
     @ViewState private var breathing = false
+    /// Momentary squash that springs back, used as a "got it" nod on play/pause.
+    @ViewState private var wobble: CGFloat = 1
 
     var body: some View {
         ZStack {
@@ -297,7 +299,14 @@ struct SwappingCover: View {
                     .opacity(incomingOpacity)
             }
         }
-        .scaleEffect(coverScale * (breathing ? 1.023 : 1))
+        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * wobble)
+        .onChange(of: media.playbackToggleID) { _, _ in
+            // Quick dip and a loose spring back: reads as a shiver rather than a resize.
+            withAnimation(.easeOut(duration: 0.07)) { wobble = 0.94 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.28)) { wobble = 1 }
+            }
+        }
         .onChange(of: media.coverRequestID) { _, _ in begin() }
         .onChange(of: media.artworkIdentity) { _, _ in
             // No click involved (the track ended by itself): start the same sequence now.
