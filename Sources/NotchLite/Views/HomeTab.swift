@@ -20,6 +20,9 @@ private struct MediaCard: View {
 
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
+    /// The cover actually on screen; the new one is dropped in at the bottom of the shrink.
+    @ViewState private var shownArtwork: NSImage?
+    @ViewState private var swapPulse: CGFloat = 1
 
     var body: some View {
         if media.hasMedia {
@@ -88,14 +91,18 @@ private struct MediaCard: View {
     }
 
     private var artwork: some View {
-        ZStack {
-            ArtworkView(image: media.artwork, size: MediaCard.coverSize, corner: 22)
-                // Keyed on the artwork itself: the fade starts when the new image actually lands,
-                // not when the track metadata does.
-                .id(media.artworkIdentity)
-                .transition(.opacity)
-        }
-        .animation(.easeInOut(duration: 0.45), value: media.artworkIdentity)
+        ArtworkView(image: shownArtwork ?? media.artwork, size: MediaCard.coverSize, corner: 22)
+            // Squash, swap at the smallest point, spring back: the new cover never appears while
+            // the tile is at full size.
+            .scaleEffect(swapPulse)
+            .onChange(of: media.artworkIdentity) { _, _ in
+                withAnimation(.easeIn(duration: 0.15)) { swapPulse = 0.86 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    shownArtwork = media.artwork
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { swapPulse = 1 }
+                }
+            }
+            .onAppear { shownArtwork = media.artwork }
             // Hovering lifts the cover and glows in the album's own colour.
             .shadow(color: media.accent.opacity(artworkHovering ? 0.85 : 0.55),
                     radius: artworkHovering ? 26 : 16)
