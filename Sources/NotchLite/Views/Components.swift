@@ -323,8 +323,10 @@ struct SwappingCover: View {
             if pressed {
                 withAnimation(.easeOut(duration: 0.09)) { coverScale = 0.93 }
             } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-                    guard !awaitingCover else { return }
+                // Let the button's action run first: if it turned the press into a track change,
+                // the swap animation takes the scale from here and this must not undo it.
+                DispatchQueue.main.async {
+                    guard !media.consumeSkipHandover() else { return }
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) { coverScale = 1 }
                 }
             }

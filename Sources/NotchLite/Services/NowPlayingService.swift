@@ -77,6 +77,14 @@ final class NowPlayingService {
 
     /// True while a skip control is held; covers shrink but do not wobble on release.
     private(set) var skipControlPressed = false
+    /// Set when a skip press turns into an actual track change, so the cover knows the swap
+    /// animation owns the scale from here and it must not spring back on its own.
+    @ObservationIgnored private var skipHandover = false
+
+    func consumeSkipHandover() -> Bool {
+        defer { skipHandover = false }
+        return skipHandover
+    }
 
     func setPlayControlPressed(_ pressed: Bool) {
         guard playControlPressed != pressed else { return }
@@ -566,6 +574,7 @@ final class NowPlayingService {
     }
 
     func next() {
+        skipHandover = true
         coverRequestID += 1
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
@@ -578,6 +587,7 @@ final class NowPlayingService {
     }
 
     func previous() {
+        skipHandover = true
         coverRequestID += 1
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
