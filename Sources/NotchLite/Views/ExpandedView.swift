@@ -39,11 +39,12 @@ struct ExpandedView: View {
                     TabButton(tab: tab, isSelected: model.tab == tab) { model.tab = tab }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Fixed rather than flexible: the source strip needs the room more than the tabs do.
+            .frame(width: 64, alignment: .leading)
 
-            Color.clear.frame(width: model.notchSize.width + 16)
+            Color.clear.frame(width: model.notchSize.width + 10)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if model.media.sources.count > 1 {
                     // A strip that stays three chips wide: past that it scrolls with a two-finger
                     // swipe instead of squeezing the row into the notch.
@@ -112,7 +113,7 @@ private struct SourceChip: View {
                 .frame(width: 16, height: 16)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .opacity(selected ? 1 : (hovering ? 0.8 : 0.45))
-                .padding(3)
+                .padding(2)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -137,12 +138,13 @@ private struct SourceStrip<Content: View>: View {
     private var visible: Int { min(count, 3) }
 
     var body: some View {
-        let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
+        // Cell width, gaps, and 8pt of slack so the 1.18× selected icon is not clipped.
+        let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 8
         ScrollView(.horizontal, showsIndicators: false) {
             content
                 .scrollTargetLayout()
                 .padding(.leading, 4)
-                .padding(.trailing, 2)
+                .padding(.trailing, 4)
                 .padding(.vertical, 2)
         }
         .frame(width: width)
