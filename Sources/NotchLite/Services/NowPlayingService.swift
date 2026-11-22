@@ -72,8 +72,13 @@ final class NowPlayingService {
     /// Bumped the moment the user asks for another track, so every cover on screen can start its
     /// shrink immediately instead of waiting for the new artwork to arrive.
     private(set) var coverRequestID = 0
-    /// Bumped on every play/pause press; covers wobble in response.
-    private(set) var playbackToggleID = 0
+    /// True while the play/pause control is held down; covers shrink on press and shake on release.
+    private(set) var playControlPressed = false
+
+    func setPlayControlPressed(_ pressed: Bool) {
+        guard playControlPressed != pressed else { return }
+        playControlPressed = pressed
+    }
     /// Like state per player. Keyed by bundle id: each app has its own flag, and switching sources
     /// must not carry the previous one's heart along.
     private var lovedState: [String: Bool] = [:]
@@ -540,7 +545,6 @@ final class NowPlayingService {
 
 
     func togglePlayPause() {
-        playbackToggleID += 1
         guard let bundle = selected?.bundleID else { return }
         if Self.scriptableBundles.contains(bundle) {
             runScript(bundle, isPlaying ? "pause" : "play")

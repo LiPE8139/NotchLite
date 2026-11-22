@@ -95,7 +95,8 @@ private struct TransportControls: View {
             WingControl(symbol: "backward.fill", size: 12, glow: media.accent, help: "Previous") { media.previous() }
             // Play/pause is the primary action, so it reads a size larger than its neighbours.
             WingControl(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 16,
-                        glow: media.accent, help: "Play or pause") { media.togglePlayPause() }
+                        glow: media.accent, help: "Play or pause",
+                        onPressChange: { media.setPlayControlPressed($0) }) { media.togglePlayPause() }
             WingControl(symbol: "forward.fill", size: 12, glow: media.accent, help: "Next") { media.next() }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.68), value: media.isPlaying)
@@ -110,6 +111,7 @@ private struct WingControl: View {
     let size: CGFloat
     var glow: Color = .white
     let help: String
+    var onPressChange: ((Bool) -> Void)?
     let action: () -> Void
 
     @ViewState private var hovering = false
@@ -124,6 +126,10 @@ private struct WingControl: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
+        .onLongPressGesture(minimumDuration: .infinity, maximumDistance: .infinity) {
+        } onPressingChanged: { pressing in
+            onPressChange?(pressing)
+        }
         .scaleEffect(hovering ? 1.1 : 1)
         .animation(.spring(response: 0.26, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }

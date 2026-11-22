@@ -250,6 +250,8 @@ struct IconButton: View {
     let symbol: String
     var size: CGFloat = 14
     var help: LocalizedStringKey = ""
+    /// Fired on press-down and release, before the action runs.
+    var onPressChange: ((Bool) -> Void)?
     let action: () -> Void
 
     @ViewState private var hovering = false
@@ -264,6 +266,10 @@ struct IconButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
+        .onLongPressGesture(minimumDuration: .infinity, maximumDistance: .infinity) {
+        } onPressingChanged: { pressing in
+            onPressChange?(pressing)
+        }
         .scaleEffect(hovering ? 1.1 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }
@@ -288,8 +294,9 @@ struct SwappingCover: View {
     @ViewState private var coverScale: CGFloat = 1
     @ViewState private var awaitingCover = false
     @ViewState private var breathing = false
-    /// Momentary squash that springs back, used as a "got it" nod on play/pause.
-    @ViewState private var wobble: CGFloat = 1
+    /// Held-down squash and the sway that follows on release.
+    @ViewState private var pressScale: CGFloat = 1
+    @ViewState private var sway: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -299,12 +306,15 @@ struct SwappingCover: View {
                     .opacity(incomingOpacity)
             }
         }
-        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * wobble)
-        .onChange(of: media.playbackToggleID) { _, _ in
-            // Quick dip and a loose spring back: reads as a shiver rather than a resize.
-            withAnimation(.easeOut(duration: 0.07)) { wobble = 0.94 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.28)) { wobble = 1 }
+        .scaleEffect(coverScale * (breathing ? 1.023 : 1) * pressScale)
+        // Amplitude follows the tile, so the little wing cover sways as far as the big one looks.
+        .offset(x: sway * (size / 112))
+        .onChange(of: media.playControlPressed) { _, pressed in
+            if pressed {
+                withAnimation(.easeOut(duration: 0.09)) { pressScale = 0.93 }
+            } else {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.45)) { pressScale = 1 }
+                startSway()
             }
         }
         .onChange(of: media.coverRequestID) { _, _ in begin() }
@@ -314,6 +324,16 @@ struct SwappingCover: View {
             swapIn(media.artwork)
         }
         .onAppear { shownArtwork = media.artwork }
+    }
+
+    /// Left-right sway that dies down: a decaying zig-zag rather than a single bounce.
+    private func startSway() {
+        let steps: [CGFloat] = [7, -6, 4.5, -3, 1.5, 0]
+        for (index, value) in steps.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.055 * Double(index)) {
+                withAnimation(.easeInOut(duration: 0.055)) { sway = value }
+            }
+        }
     }
 
     private func begin() {
