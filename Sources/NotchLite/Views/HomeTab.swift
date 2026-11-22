@@ -72,7 +72,7 @@ private struct MediaCard: View {
 
     private var artwork: some View {
         ZStack {
-            ArtworkView(image: media.artwork, size: 96, corner: 18)
+            ArtworkView(image: media.artwork, size: 104, corner: 20)
                 // Keyed on the artwork itself: the fade starts when the new image actually lands,
                 // not when the track metadata does.
                 .id(media.artworkIdentity)

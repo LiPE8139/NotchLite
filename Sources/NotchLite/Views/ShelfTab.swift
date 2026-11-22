@@ -71,7 +71,6 @@ struct ShelfTab: View {
                     .disabled(!hasItems)
             }
             .opacity(hasItems ? 1 : 0.7)
-            Spacer(minLength: 0)
             if hasItems {
                 Text(shelf.selection.isEmpty
                      ? String(localized: "\(shelf.items.count) items")
