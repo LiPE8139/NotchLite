@@ -94,32 +94,40 @@ private struct TransportControls: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            button("backward.fill", size: 12, help: "Previous") { media.previous() }
+            WingControl(symbol: "backward.fill", size: 12, help: "Previous") { media.previous() }
             // Play/pause is the primary action, so it reads a size larger than its neighbours.
-            button(media.isPlaying ? "pause.fill" : "play.fill", size: 16, help: "Play or pause") {
-                media.togglePlayPause()
-            }
-            button("forward.fill", size: 12, help: "Next") { media.next() }
+            WingControl(symbol: media.isPlaying ? "pause.fill" : "play.fill", size: 16,
+                        help: "Play or pause") { media.togglePlayPause() }
+            WingControl(symbol: "forward.fill", size: 12, help: "Next") { media.next() }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.68), value: media.isPlaying)
         .disabled(!media.canControl)
         .opacity(media.canControl ? 1 : 0.35)
     }
+}
 
-    /// Every control gets the same 18 × 20 hit area, so the row stays optically even although the
-    /// glyphs differ in width — and nothing sits against the wing's edge where it would be clipped.
-    private func button(_ symbol: String, size: CGFloat,
-                        help: String, action: @escaping () -> Void) -> some View {
+/// One wing control: grows under the pointer, squashes on click, and morphs between glyphs.
+private struct WingControl: View {
+    let symbol: String
+    let size: CGFloat
+    let help: String
+    let action: () -> Void
+
+    @ViewState private var hovering = false
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
-                // Morph between glyphs instead of cross-fading, like morphicons.
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 18, height: 20)
+                .background(Circle().fill(.white.opacity(hovering ? 0.18 : 0)))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
+        .buttonStyle(PressableButtonStyle())
+        .scaleEffect(hovering ? 1.12 : 1)
+        .animation(.spring(response: 0.26, dampingFraction: 0.62), value: hovering)
+        .onHover { hovering = $0 }
         .help(help)
     }
 }

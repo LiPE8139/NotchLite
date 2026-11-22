@@ -122,6 +122,7 @@ private struct ScrubBar: View {
     /// Where the user let go. Held until the reported position catches up, otherwise the bar snaps
     /// back to the old spot for the ~400 ms the bridge needs to notice the seek.
     @ViewState private var settleTarget: Double?
+    @ViewState private var hovering = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
@@ -132,10 +133,10 @@ private struct ScrubBar: View {
                 Text(format(dragProgress.map { $0 * media.duration } ?? elapsed))
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.18))
+                        Capsule().fill(.white.opacity(hovering || dragProgress != nil ? 0.3 : 0.18))
                         Capsule().fill(media.accent).frame(width: geo.size.width * progress)
                     }
-                    .frame(height: dragProgress == nil ? 4 : 7)
+                    .frame(height: (dragProgress == nil && !hovering) ? 4 : 7)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0)
@@ -153,6 +154,8 @@ private struct ScrubBar: View {
                         })
                 }
                 .frame(height: 12)
+                .onHover { hovering = $0 }
+                .animation(.spring(response: 0.26, dampingFraction: 0.7), value: hovering)
                 // Seeking only works where we can actually set a position.
                 .allowsHitTesting(media.canSeek)
                 Text("-" + format(max(0, media.duration - elapsed)))

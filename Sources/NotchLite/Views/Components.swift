@@ -237,6 +237,15 @@ final class ScrollingTextLayerView: NSView {
     }
 }
 
+/// Squash on click, shared by every control so the whole UI answers the same way.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.86 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.55), value: configuration.isPressed)
+    }
+}
+
 struct IconButton: View {
     let symbol: String
     var size: CGFloat = 14
@@ -253,7 +262,9 @@ struct IconButton: View {
                 .background(Circle().fill(.white.opacity(hovering ? 0.14 : 0)))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
+        .scaleEffect(hovering ? 1.1 : 1)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }
         .help(help)
     }

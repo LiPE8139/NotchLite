@@ -34,7 +34,7 @@ enum Metrics {
     static let compactTopRadius: CGFloat = 4
     static let expandedTopRadius: CGFloat = 14
     /// Width of the expanded island: room for the tabs and the gear beside the camera, no more.
-    static let expandedWidth: CGFloat = 460
+    static let expandedWidth: CGFloat = 440
     /// How much wider than the notch the expanded island must stay for the header to fit.
     static let expandedBleed: CGFloat = 200
     static let expandedContentHeight: CGFloat = 152
