@@ -98,6 +98,7 @@ private struct TransportControls: View {
             }
             button("forward.fill", size: 12, help: "Next") { media.next() }
         }
+        .animation(.spring(response: 0.34, dampingFraction: 0.68), value: media.isPlaying)
         .disabled(!media.canControl)
         .opacity(media.canControl ? 1 : 0.35)
     }
@@ -109,6 +110,8 @@ private struct TransportControls: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
+                // Morph between glyphs instead of cross-fading, like morphicons.
+                .contentTransition(.symbolEffect(.replace))
                 .frame(width: 18, height: 20)
                 .contentShape(Rectangle())
         }

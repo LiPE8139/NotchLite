@@ -9,8 +9,14 @@ struct HomeTab: View {
     }
 }
 
+/// Spring tuned to match morphicons' feel: quick, with a slight overshoot.
+enum MediaMotion {
+    static let spring = Animation.spring(response: 0.34, dampingFraction: 0.68)
+}
+
 private struct MediaCard: View {
     let media: NowPlayingService
+    @ViewState private var artworkHovering = false
 
     var body: some View {
         if media.hasMedia {
@@ -67,14 +73,24 @@ private struct MediaCard: View {
 
     private var artwork: some View {
         ArtworkView(image: media.artwork, size: 96, corner: 18)
-            .shadow(color: media.accent.opacity(0.55), radius: 16)
+            // Hovering lifts the cover and glows in the album's own colour.
+            .shadow(color: media.accent.opacity(artworkHovering ? 0.85 : 0.55),
+                    radius: artworkHovering ? 26 : 16)
             .overlay(alignment: .bottomTrailing) {
                 if let icon = media.playerIcon {
                     Image(nsImage: icon).resizable().frame(width: 26, height: 26).offset(x: 7, y: 7)
                 }
             }
-            .scaleEffect(media.isPlaying ? 1 : 0.92)
-            .animation(.spring(response: 0.4, dampingFraction: 0.6), value: media.isPlaying)
+            .overlay(alignment: .center) {
+                if artworkHovering {
+                    playPauseBadge
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
+            }
+            .scaleEffect(artworkHovering ? 1.06 : (media.isPlaying ? 1 : 0.92))
+            .onHover { artworkHovering = $0 }
+            .animation(MediaMotion.spring, value: artworkHovering)
+            .animation(MediaMotion.spring, value: media.isPlaying)
             .onTapGesture { media.openPlayerApp() }
             // Two-finger style swipe over the cover cycles the sessions that are playing.
             .gesture(DragGesture(minimumDistance: 24).onEnded { value in
@@ -82,6 +98,26 @@ private struct MediaCard: View {
                 else if value.translation.height > 24 { media.selectPrevious() }
             })
             .help("Open the playing app")
+    }
+
+    /// Play/pause affordance that morphs between its two glyphs, the way morphicons does:
+    /// the shapes interpolate rather than one fading over the other.
+    private var playPauseBadge: some View {
+        Button {
+            media.togglePlayPause()
+        } label: {
+            Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 46, height: 46)
+                .background(Circle().fill(.black.opacity(0.45)))
+                .background(Circle().fill(.ultraThinMaterial))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .animation(MediaMotion.spring, value: media.isPlaying)
+        .help(media.isPlaying ? "Pause" : "Play")
     }
 
     private var controls: some View {
@@ -92,6 +128,7 @@ private struct MediaCard: View {
             IconButton(symbol: "forward.fill", size: 15) { media.next() }
         }
         .frame(maxWidth: .infinity)
+        .animation(MediaMotion.spring, value: media.isPlaying)
         .disabled(!media.canControl)
         .opacity(media.canControl ? 1 : 0.35)
     }
