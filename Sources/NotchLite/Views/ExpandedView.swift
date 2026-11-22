@@ -153,9 +153,8 @@ private struct SourceStrip<Content: View>: View {
                     .padding(.vertical, 2)
             }
             .frame(width: width)
-            // Rest on a chip, never half way across one: a partly scrolled chip used to read as if
-            // the notch were covering it.
-            .scrollTargetBehavior(.viewAligned)
+            // No snapping: with only a chip's width of travel it fought the fingers and felt like
+            // it would only move one way.
             .mask(edgeFade)
             .help(count > 3 ? "Swipe sideways to see \(count) players" : "")
             // Picking a player brings it to the middle of the strip, so the current session is
