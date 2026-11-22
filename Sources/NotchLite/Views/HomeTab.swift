@@ -14,17 +14,56 @@ enum MediaMotion {
     static let spring = Animation.spring(response: 0.34, dampingFraction: 0.68)
 }
 
+/// Cross-fades and dips the cover from one image to the next.
+///
+/// Both the scale and the dissolve come from the same `progress`, so there is only ever one
+/// animation running: no hand-off between shrink, fade and bounce, hence no seams.
+private struct SwappingArtwork: View, Animatable {
+    var progress: Double
+    let old: NSImage?
+    let new: NSImage?
+    let size: CGFloat
+    let corner: CGFloat
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let p = min(max(progress, 0), 1)
+        // Deepest at the middle of the transition, back to full size at both ends.
+        let dip = sin(p * .pi)
+        let scale = 1 - 0.14 * dip
+        // Dissolve happens across the middle band, while the tile is at its smallest.
+        let fade = smoothstep(0.15, 0.85, p)
+
+        return ZStack {
+            ArtworkView(image: old, size: size, corner: corner)
+            ArtworkView(image: new, size: size, corner: corner)
+                .opacity(fade)
+        }
+        .scaleEffect(scale)
+    }
+
+    private func smoothstep(_ edge0: Double, _ edge1: Double, _ x: Double) -> Double {
+        let t = min(max((x - edge0) / (edge1 - edge0), 0), 1)
+        return t * t * (3 - 2 * t)
+    }
+}
+
 private struct MediaCard: View {
     /// The cover's edge length; the text column is pinned to the same height.
     static let coverSize: CGFloat = 112
 
     let media: NowPlayingService
     @ViewState private var artworkHovering = false
-    /// The cover actually on screen; the new one is faded in over it at the bottom of the shrink.
+    /// The cover actually on screen, and the pair used while a change is animating.
     @ViewState private var shownArtwork: NSImage?
-    @ViewState private var incomingArtwork: NSImage?
-    @ViewState private var incomingOpacity: Double = 0
-    @ViewState private var swapPulse: CGFloat = 1
+    @ViewState private var swapFrom: NSImage?
+    @ViewState private var swapTo: NSImage?
+    /// A single value drives the whole cover change: 0 = old cover, 1 = new cover.
+    @ViewState private var swapProgress: Double = 1
 
     var body: some View {
         if media.hasMedia {
@@ -93,35 +132,27 @@ private struct MediaCard: View {
     }
 
     private var artwork: some View {
-        ZStack {
-            ArtworkView(image: shownArtwork ?? media.artwork, size: MediaCard.coverSize, corner: 22)
-            if let incoming = incomingArtwork {
-                ArtworkView(image: incoming, size: MediaCard.coverSize, corner: 22)
-                    .opacity(incomingOpacity)
+        SwappingArtwork(progress: swapProgress,
+                        old: swapFrom ?? media.artwork,
+                        new: swapTo ?? media.artwork,
+                        size: MediaCard.coverSize,
+                        corner: 22)
+            .onChange(of: media.artworkIdentity) { _, _ in
+                let next = media.artwork
+                swapFrom = shownArtwork ?? next
+                swapTo = next
+                swapProgress = 0
+                // Reset and animate in separate turns, otherwise both changes coalesce and the
+                // progress jumps straight to 1 with no animation at all.
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.42)) { swapProgress = 1 }
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(440))
+                    shownArtwork = next
+                }
             }
-        }
-        // One overlapping move: the dissolve starts just before the tile bottoms out and the
-        // spring back begins before the dissolve finishes, so there is no seam between phases.
-        .scaleEffect(swapPulse)
-        .onChange(of: media.artworkIdentity) { _, _ in
-            let next = media.artwork
-            Task { @MainActor in
-                withAnimation(.easeIn(duration: 0.13)) { swapPulse = 0.86 }
-                try? await Task.sleep(for: .milliseconds(100))
-                incomingArtwork = next
-                incomingOpacity = 0
-                // One tick so the incoming tile is laid out at 0 before it fades in.
-                try? await Task.sleep(for: .milliseconds(16))
-                withAnimation(.easeInOut(duration: 0.20)) { incomingOpacity = 1 }
-                try? await Task.sleep(for: .milliseconds(140))
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.66)) { swapPulse = 1 }
-                try? await Task.sleep(for: .milliseconds(70))
-                shownArtwork = next
-                incomingArtwork = nil
-                incomingOpacity = 0
-            }
-        }
-        .onAppear { shownArtwork = media.artwork }
+            .onAppear { shownArtwork = media.artwork }
             // Hovering lifts the cover and glows in the album's own colour.
             .shadow(color: media.accent.opacity(artworkHovering ? 0.85 : 0.55),
                     radius: artworkHovering ? 26 : 16)
