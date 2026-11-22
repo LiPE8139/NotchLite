@@ -315,15 +315,28 @@ struct SwappingCover: View {
         // Rotating about the centre, the way iOS icons wiggle, rather than sliding sideways.
         .rotationEffect(.degrees(tilt))
         .onChange(of: media.bundleID) { _, _ in
-            // Switching players is a cut, not a track change: show whatever that player already
-            // has, without a swap animation. Animating here produced two swaps in a row (app icon,
-            // then the real cover) and read as a flicker.
+            // Switching players only gets a short cross-fade: the full squash-and-swap would run
+            // twice (player icon, then the real cover) and read as a flicker.
             awaitingCover = false
             breathing = false
-            incomingArtwork = nil
-            incomingOpacity = 0
             coverScale = 1
-            shownArtwork = media.artwork
+            guard let next = media.artwork, next !== shownArtwork else {
+                shownArtwork = media.artwork
+                incomingArtwork = nil
+                incomingOpacity = 0
+                return
+            }
+            incomingArtwork = next
+            incomingOpacity = 0
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.15)) { incomingOpacity = 1 }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(160))
+                    shownArtwork = next
+                    incomingArtwork = nil
+                    incomingOpacity = 0
+                }
+            }
         }
         .onChange(of: media.playControlPressed) { _, pressed in
             if pressed {
