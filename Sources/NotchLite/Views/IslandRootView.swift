@@ -9,9 +9,6 @@ struct IslandRootView: View {
     /// Content still gets a little life.
     private let content = Animation.spring(response: 0.4, dampingFraction: 0.85)
 
-    /// How far the content travels while collapsing.
-    static let collapseSlide: CGFloat = 16
-
     var body: some View {
         let presentation = model.presentation
         let shape = NotchShape(topRadius: model.topRadius, bottomRadius: model.bottomRadius)
@@ -29,10 +26,6 @@ struct IslandRootView: View {
                     .onTapGesture { model.onTapExpand?() }
                 content(for: presentation)
                     .frame(width: model.islandSize.width, height: model.islandSize.height, alignment: .top)
-                    // Collapsing slides the content down and out through the shrinking shape, so the
-                    // eye follows the content into the notch instead of watching the bottom edge
-                    // travel across it.
-                    .offset(y: expanded ? 0 : IslandRootView.collapseSlide)
                     .clipShape(shape)
             }
             .frame(width: model.islandSize.width, height: model.islandSize.height)
