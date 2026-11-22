@@ -49,7 +49,7 @@ struct ExpandedView: View {
                     // A strip that stays three chips wide: past that it scrolls with a two-finger
                     // swipe instead of squeezing the row into the notch.
                     SourceStrip(count: model.media.sources.count) {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 3) {
                             ForEach(model.media.sources) { source in
                                 SourceChip(source: source,
                                            selected: source.id == model.media.selected?.id,
@@ -68,9 +68,7 @@ struct ExpandedView: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        // Asymmetric: the trailing side carries the source strip and needs the extra room.
-        .padding(.leading, 10)
-        .padding(.trailing, 2)
+        .padding(.horizontal, 10)
         .padding(.top, 2)
     }
 }
@@ -136,12 +134,12 @@ private struct SourceStrip<Content: View>: View {
     @ViewBuilder var content: Content
 
     private var chipWidth: CGFloat { 20 }
-    private var spacing: CGFloat { 5 }
+    private var spacing: CGFloat { 3 }
     private var visible: Int { min(count, 3) }
 
     var body: some View {
-        // Cell width, gaps, and 8pt of slack so the 1.18× selected icon is not clipped.
-        let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 8
+        // Cell width, gaps, and 4pt of slack so the 1.18× selected icon is not clipped.
+        let width = CGFloat(visible) * chipWidth + CGFloat(max(0, visible - 1)) * spacing + 4
         ScrollView(.horizontal, showsIndicators: false) {
             content
                 .scrollTargetLayout()
