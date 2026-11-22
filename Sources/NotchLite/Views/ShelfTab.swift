@@ -3,8 +3,8 @@ import SwiftUI
 struct ShelfTab: View {
     let model: IslandModel
 
-    /// The action column enters from the left on its own, springier schedule than the page itself.
-    @ViewState private var actionsIn = false
+    /// How many action rows have slid in; incremented row by row so the column unfolds.
+    @ViewState private var visibleRows = 0
 
     var body: some View {
         let shelf = model.shelf
@@ -45,13 +45,13 @@ struct ShelfTab: View {
             }
 
             actions(shelf)
-                .offset(x: actionsIn ? 0 : 26)
-                .opacity(actionsIn ? 1 : 0)
         }
         .onAppear {
-            actionsIn = false
-            withAnimation(.spring(response: 0.46, dampingFraction: 0.5).delay(0.06)) {
-                actionsIn = true
+            visibleRows = 0
+            for row in 1...3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05 + 0.07 * Double(row - 1)) {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.5)) { visibleRows = row }
+                }
             }
         }
         .onAppear { shelf.prune() }
@@ -60,28 +60,44 @@ struct ShelfTab: View {
     private func actions(_ shelf: ShelfStore) -> some View {
         let hasItems = !shelf.items.isEmpty
         return VStack(spacing: 4) {
-            LazyVGrid(columns: [GridItem(.fixed(28), spacing: 4), GridItem(.fixed(28), spacing: 4)], spacing: 4) {
-                IconButton(symbol: "doc.on.clipboard", size: 12, help: "Add from clipboard (⌃⌥V)") { shelf.addFromPasteboard() }
+            // Three rows, revealed top to bottom so the column unfolds instead of popping.
+            actionRow(0) {
+                IconButton(symbol: "doc.on.clipboard", size: 12, help: "Add from clipboard (⌃⌥V)") {
+                    shelf.addFromPasteboard()
+                }
                 IconButton(symbol: "square.and.arrow.up", size: 12, help: "Share selected, or all") {
                     ShelfMenus.showSharePicker(for: shelf.targets.map(\.url), model: model)
                 }
                 .disabled(!hasItems)
-                IconButton(symbol: "airplayaudio", size: 12, help: "AirDrop selected, or all") { shelf.airDrop(shelf.targets) }
-                    .disabled(!hasItems)
-                IconButton(symbol: "doc.on.doc", size: 12, help: "Copy selected, or all") { shelf.copyToClipboard(shelf.targets) }
-                    .disabled(!hasItems)
+            }
+            actionRow(1) {
+                IconButton(symbol: "airplayaudio", size: 12, help: "AirDrop selected, or all") {
+                    shelf.airDrop(shelf.targets)
+                }
+                .disabled(!hasItems)
+                IconButton(symbol: "doc.on.doc", size: 12, help: "Copy selected, or all") {
+                    shelf.copyToClipboard(shelf.targets)
+                }
+                .disabled(!hasItems)
+            }
+            actionRow(2) {
                 Group {
                     if shelf.isBusy {
                         ProgressView().controlSize(.small).frame(width: 28, height: 28)
                     } else {
-                        IconButton(symbol: "doc.zipper", size: 12, help: "Zip selected, or all") { shelf.zip(shelf.targets) }
-                            .disabled(!hasItems)
+                        IconButton(symbol: "doc.zipper", size: 12, help: "Zip selected, or all") {
+                            shelf.zip(shelf.targets)
+                        }
+                        .disabled(!hasItems)
                     }
                 }
-                IconButton(symbol: "xmark.bin", size: 12, help: "Remove selected, or all") { shelf.removeTargets() }
-                    .disabled(!hasItems)
+                IconButton(symbol: "xmark.bin", size: 12, help: "Remove selected, or all") {
+                    shelf.removeTargets()
+                }
+                .disabled(!hasItems)
             }
             .opacity(hasItems ? 1 : 0.7)
+
             if hasItems {
                 Text(shelf.selection.isEmpty
                      ? String(localized: "\(shelf.items.count) items")
@@ -93,6 +109,13 @@ struct ShelfTab: View {
             }
         }
         .frame(width: 60)
+    }
+
+    /// One row of actions; slides in from the right once `visibleRows` has reached it.
+    private func actionRow<Content: View>(_ index: Int, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 4, content: content)
+            .offset(x: visibleRows > index ? 0 : 26)
+            .opacity(visibleRows > index ? 1 : 0)
     }
 }
 
