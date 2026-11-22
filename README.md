@@ -11,6 +11,7 @@ third-party dependencies and no permission prompts.
 | | |
 |---|---|
 | **Now Playing** | Album art, title/artist, drag-to-seek progress, play/pause/skip. Several players can be playing at once — pick between them from the source icons in the header (they scroll once there are more than three). Works with Music, Spotify, 网易云音乐, browsers — anything that reports to the system Now Playing panel. While a track plays, the notch grows wings: cover on the left, a visualizer tinted to the album colours on the right. Track changes drop a small banner. |
+| **Output device** | The icon beside the transport shows where the sound is going — this Mac, AirPods, headphones, a Bluetooth speaker, a display — and clicking it switches the system output. |
 | **File shelf** | Park files, images, links and text on the notch, then drag them out later. Five ways in: drag onto the notch · shake a dragged file to summon a drop zone · `⌃⌥V` pastes the clipboard · Finder → Services → *Add to NotchLite* · `open -a NotchLite <file>`. Share, AirDrop, copy or zip from the shelf. |
 
 ### Shortcuts
@@ -40,6 +41,15 @@ the package with `open Package.swift` if you prefer an IDE.
 The MediaRemote framework and its `perl` driver are vendored under `vendor/mediaremote-adapter`
 (taken from [ungive/mediaremote-adapter](https://github.com/ungive/mediaremote-adapter), BSD-3-Clause),
 so packaging needs neither network access nor cmake.
+
+## Updates
+
+The gear menu has **Check for Updates…** and an **Update Automatically** toggle.
+
+- Manual: queries the latest GitHub release, compares versions, and offers to download and install.
+- Automatic: checks 8 s after launch and every 6 hours; when a newer release exists it downloads the
+  ZIP, unpacks it, and swaps the bundle through a helper script that waits for the app to quit, then
+  relaunches. Only runs when the app sits in `/Applications`.
 
 ## Permissions
 

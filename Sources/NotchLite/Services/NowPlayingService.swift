@@ -95,7 +95,6 @@ final class NowPlayingService {
         guard skipControlPressed != pressed else { return }
         skipControlPressed = pressed
     }
-
     var selected: MediaSource? {
         if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
         return sources.first

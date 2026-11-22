@@ -11,6 +11,8 @@ final class NotchController {
     private let panel = NotchPanel()
     private var screen: NSScreen?
     private var monitors: [Any] = []
+    /// Update checks for the public build.
+    let updates = UpdateService()
 
     private var hoverTask: Task<Void, Never>?
     private var hoverControlsTask: Task<Void, Never>?
@@ -43,6 +45,7 @@ final class NotchController {
     }
 
     func start() {
+        updates.startBackgroundChecks()
         let hosting = DropHostingView(rootView: IslandRootView(model: model))
         hosting.sizingOptions = []
         hosting.targetSize = { [weak self] in self?.model.islandSize ?? .zero }
@@ -455,6 +458,12 @@ final class NotchController {
 
         menu.addItem(NSMenuItem(title: String(localized: "About NotchLite"),
                                 action: #selector(MenuTarget.showAbout), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: String(localized: "Check for Updates…"),
+                                action: #selector(MenuTarget.checkForUpdates), keyEquivalent: ""))
+        let auto = NSMenuItem(title: String(localized: "Update Automatically"),
+                              action: #selector(MenuTarget.toggleAutoUpdate), keyEquivalent: "")
+        auto.state = updates.autoUpdateEnabled ? .on : .off
+        menu.addItem(auto)
         menu.addItem(.separator())
 
         let haptics = NSMenuItem(title: String(localized: "Haptic feedback"), action: #selector(MenuTarget.toggleHaptics), keyEquivalent: "")
@@ -521,6 +530,14 @@ private final class MenuTarget: NSObject {
     weak var controller: NotchController?
 
     init(controller: NotchController) { self.controller = controller }
+
+    @objc func checkForUpdates() {
+        MainActor.assumeIsolated { controller?.updates.checkManually() }
+    }
+
+    @objc func toggleAutoUpdate() {
+        MainActor.assumeIsolated { controller?.updates.autoUpdateEnabled.toggle() }
+    }
 
     @objc func showAbout() {
         MainActor.assumeIsolated {

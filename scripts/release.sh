@@ -39,6 +39,8 @@ need_branch() {
     local current
     current="$(git branch --show-current)"
     [ "$current" = "$1" ] || die "需要先切到分支 $1（当前是 ${current:-detached}）"
+    # Tags must point at the code that was actually built, so refuse an uncommitted tree.
+    [ -z "$(git status --porcelain)" ] || die "工作区有未提交改动，先 commit 再发布（否则标签会指向旧代码）"
 }
 
 # Git over ssh.github.com:443 — github.com:22 is blocked on this network.
@@ -111,22 +113,15 @@ release_public() {
     ln -s /Applications build/dmg/Applications
     local dmg="build/NotchLite-$version.dmg" zip="build/NotchLite-$version.zip"
     rm -f "$dmg" "$zip"
-    # A stale mount from an earlier build makes hdiutil fail with "Resource busy".
-    if [ -d /Volumes/NotchLite ]; then
-        hdiutil detach /Volumes/NotchLite -force >/dev/null 2>&1 || true
-    fi
-    if ! hdiutil create -volname NotchLite -srcfolder build/dmg -ov -format UDZO "$dmg" >/dev/null 2>&1; then
-        hdiutil detach /Volumes/NotchLite -force >/dev/null 2>&1 || true
-        hdiutil create -volname NotchLite -srcfolder build/dmg -ov -format UDZO "$dmg" >/dev/null
-    fi
+    hdiutil create -volname NotchLite -srcfolder build/dmg -ov -format UDZO "$dmg" >/dev/null
     ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
     ok "$(basename "$dmg") $(du -h "$dmg" | cut -f1) / $(basename "$zip") $(du -h "$zip" | cut -f1)"
     shasum -a 256 "$dmg" | awk '{print "    SHA256:", $1}'
 
     info "推送 main"
-    git_ssh git push origin "$PUBLIC_BRANCH:main" | tail -1
+    git push origin "$PUBLIC_BRANCH:main" | tail -1
     git tag -f "v$version" HEAD >/dev/null
-    git_ssh git push -f origin "v$version" | tail -1
+    git push -f origin "v$version" | tail -1
 
     info "创建 Release"
     local body; body="$(mktemp)"

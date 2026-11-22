@@ -1,3 +1,4 @@
+import CoreAudio
 import SwiftUI
 
 struct HomeTab: View {
@@ -22,6 +23,7 @@ private struct MediaCard: View {
     @ViewState private var artworkHovering = false
     /// Momentary squash while the click is being delivered.
     @ViewState private var coverPressed = false
+    @ViewState private var pickerHovering = false
 
     var body: some View {
         if media.hasMedia {
@@ -119,9 +121,54 @@ private struct MediaCard: View {
                        onPressChange: { media.setSkipControlPressed($0) }) { media.next() }
         }
         .frame(maxWidth: .infinity)
+        // Overlay rather than a fourth item: the transport stays centred whatever the icon's size.
+        .overlay(alignment: .trailing) { sourcePicker }
         .animation(MediaMotion.spring, value: media.isPlaying)
         .disabled(!media.canControl)
         .opacity(media.canControl ? 1 : 0.35)
+    }
+
+    /// The device the sound is coming out of; clicking it offers the others. Symbol shapes morph
+    /// between devices, the way morphicons interpolates icons.
+    private var sourcePicker: some View {
+        let audio = AudioOutputService.shared
+        return Button { showOutputMenu() } label: {
+            Image(systemName: audio.current?.symbol ?? "laptopcomputer")
+                .font(.system(size: 13.5, weight: .medium))
+                // Secondary by design: it reports where the sound goes, it is not a transport key.
+                .foregroundStyle(.white.opacity(pickerHovering ? 0.85 : 0.45))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .scaleEffect(pickerHovering ? 1.12 : 1)
+        .onHover { pickerHovering = $0 }
+        .animation(.spring(response: 0.28, dampingFraction: 0.6), value: pickerHovering)
+        .animation(.spring(response: 0.3, dampingFraction: 0.62), value: audio.current?.id)
+        .help(audio.current?.name ?? "")
+    }
+
+    /// Pops the output-device list at the pointer, the same way the gear menu does.
+    private func showOutputMenu() {
+        let audio = AudioOutputService.shared
+        let outputs = audio.outputs()
+        guard !outputs.isEmpty else { return }
+        let menu = NSMenu()
+        let target = SourceMenuTarget { id in
+            if let device = AudioDeviceID(id) { audio.setDefault(device) }
+        }
+        for output in outputs {
+            let item = NSMenuItem(title: output.name,
+                                  action: #selector(SourceMenuTarget.pick(_:)), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: output.symbol, accessibilityDescription: nil)
+            item.representedObject = String(output.id)
+            item.state = output.id == audio.current?.id ? .on : .off
+            item.target = target
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        withExtendedLifetime(target) {}
     }
 }
 
@@ -184,5 +231,16 @@ private struct ScrubBar: View {
     private func format(_ t: TimeInterval) -> String {
         let s = Int(t)
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// NSMenu needs an Objective-C target; this one forwards the chosen source id.
+private final class SourceMenuTarget: NSObject {
+    private let action: (String) -> Void
+    init(_ action: @escaping (String) -> Void) { self.action = action }
+
+    @objc func pick(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        action(id)
     }
 }
