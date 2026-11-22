@@ -386,6 +386,9 @@ final class NotchController {
     }
 
     func collapse() {
+        // Picking another player is only meant to change what the open panel shows. Once it closes
+        // the notch goes back to following whatever is actually playing.
+        model.media.followSystem()
         releaseKeyboardOpen()
         hoverTask?.cancel()
         hoverTask = nil
