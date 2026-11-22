@@ -95,14 +95,6 @@ final class NowPlayingService {
         guard skipControlPressed != pressed else { return }
         skipControlPressed = pressed
     }
-    /// Like state per player. Keyed by bundle id: each app has its own flag, and switching sources
-    /// must not carry the previous one's heart along.
-    private var lovedState: [String: Bool] = [:]
-
-    var isLoved: Bool {
-        guard let bundle = selected?.bundleID else { return false }
-        return lovedState[bundle] ?? false
-    }
 
     var selected: MediaSource? {
         if let selectedID, let match = sources.first(where: { $0.id == selectedID }) { return match }
@@ -125,7 +117,7 @@ final class NowPlayingService {
 
     /// Whether the transport should be offered: scriptable players always, players we can drive by
     /// hotkey always, the rest only while they hold the system's playback slot.
-    var canControl: Bool { canScript || canUseHotkeys || (selected?.isActive ?? false) }
+    var canControl: Bool { canScript || (selected?.isActive ?? false) }
 
     /// Players that answered "Failed to seek": NetEase rejects it even when it holds the slot, so
     /// the progress bar must not pretend otherwise.
@@ -222,13 +214,6 @@ final class NowPlayingService {
     // MARK: - Lifecycle
 
     func start() {
-        // Ask once so the app lands in System Settings → Accessibility; the toggle itself can only
-        // be flipped by hand, so surface it early instead of waiting for a failed button press.
-        let prompted = UserDefaults.standard.bool(forKey: "askedForAccessibility")
-        if !HotkeyInjector.isTrusted && !prompted {
-            UserDefaults.standard.set(true, forKey: "askedForAccessibility")
-            HotkeyInjector.requestTrust()
-        }
         guard let launch = Self.launchConfiguration() else {
             isAvailable = false
             NSLog("[NowPlaying] MediaRemote bridge not found; Now Playing disabled")
@@ -541,30 +526,6 @@ final class NowPlayingService {
         return Self.scriptableBundles.contains(bundle)
     }
 
-    /// NetEase has a global shortcut for liking the current song; nothing else exposes one.
-    var supportsLike: Bool { bundleID == "com.netease.163music" }
-
-    /// Presses the player's like shortcut. The player gives us no way to read the flag back, so the
-    /// heart lights up briefly rather than claiming a state we cannot verify.
-    func toggleLoved() {
-        guard let bundle = bundleID, bundle == "com.netease.163music" else { return }
-        HotkeyInjector.like(.netEase)
-        lovedState[bundle] = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.2))
-            self.lovedState[bundle] = false
-        }
-    }
-
-    /// Players that expose neither MediaRemote command rights nor a scripting dictionary, but do
-    /// register global hotkeys we can press.
-    private static let hotkeyBundles: Set<String> = ["com.netease.163music"]
-
-    var canUseHotkeys: Bool {
-        guard let bundle = selected?.bundleID else { return false }
-        return Self.hotkeyBundles.contains(bundle)
-    }
-
 
     func togglePlayPause() {
         guard let bundle = selected?.bundleID else { return }
@@ -573,8 +534,6 @@ final class NowPlayingService {
         } else if selected?.isActive == true {
             // Only an elected player accepts MediaRemote commands; otherwise fall through.
             send(isPlaying ? 1 : 0, to: bundle)
-        } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.playPause(.netEase)
         }
         updateActivity()
     }
@@ -587,8 +546,6 @@ final class NowPlayingService {
             runScript(bundle, "next track")
         } else if selected?.isActive == true {
             send(4, to: bundle)
-        } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.next(.netEase)
         }
     }
 
@@ -600,8 +557,6 @@ final class NowPlayingService {
             runScript(bundle, "previous track")
         } else if selected?.isActive == true {
             send(5, to: bundle)
-        } else if Self.hotkeyBundles.contains(bundle) {
-            HotkeyInjector.previous(.netEase)
         }
     }
 

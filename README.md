@@ -10,7 +10,7 @@ third-party dependencies and no permission prompts.
 
 | | |
 |---|---|
-| **Now Playing** | Album art, title/artist, drag-to-seek progress, play/pause/skip. Works with Music, Spotify, 网易云音乐, browsers — anything that reports to the system Now Playing panel. While a track plays, the notch grows wings: cover on the left, a visualizer tinted to the album colours on the right. Track changes drop a small banner. |
+| **Now Playing** | Album art, title/artist, drag-to-seek progress, play/pause/skip. Several players can be playing at once — pick between them from the source icons in the header (they scroll once there are more than three). Works with Music, Spotify, 网易云音乐, browsers — anything that reports to the system Now Playing panel. While a track plays, the notch grows wings: cover on the left, a visualizer tinted to the album colours on the right. Track changes drop a small banner. |
 | **File shelf** | Park files, images, links and text on the notch, then drag them out later. Five ways in: drag onto the notch · shake a dragged file to summon a drop zone · `⌃⌥V` pastes the clipboard · Finder → Services → *Add to NotchLite* · `open -a NotchLite <file>`. Share, AirDrop, copy or zip from the shelf. |
 
 ### Shortcuts
@@ -43,17 +43,14 @@ so packaging needs neither network access nor cmake.
 
 ## Permissions
 
-Reading Now Playing needs no permission: it goes through `/usr/bin/perl` + a small bridge dylib,
-which macOS allows. Controlling other players does, because macOS only lets one app at a time own
-the playback slot:
-
 | Permission | Why | Covers |
 |---|---|---|
-| Automation | AppleScript talks to the player directly, bypassing the slot entirely | Apple Music, Spotify |
-| Accessibility | The player's own global shortcut is pressed on its behalf | NetEase (⌃⌥⌘S / ⌃⌥⌘A / ⌃⌥⌘D) |
+| Automation | AppleScript talks to the player directly, bypassing the playback slot | Apple Music, Spotify |
 
-Transport falls back in this order: script → MediaRemote (only when the player holds the slot) →
-global shortcut. Nothing else is asked for — the shelf only stores paths.
+Everything else — reading Now Playing, the source list, artwork — goes through `/usr/bin/perl` driving
+the vendored MediaRemote adapter and needs no grant. Players with neither a scripting dictionary nor
+the playback slot show their transport buttons disabled rather than pretending to work; the shelf only
+stores paths.
 
 ## Known limitations
 
