@@ -105,23 +105,21 @@ private struct SourceChip: View {
 
     var body: some View {
         Button(action: action) {
+            // No plate behind the icon: it only ever got clipped by the notch. Size and glow carry
+            // the states instead.
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: 16, height: 16)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .opacity(selected ? 1 : 0.4)
-                .padding(2)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(selected ? 0.16 : (hovering ? 0.08 : 0)))
-                )
+                .opacity(selected ? 1 : (hovering ? 0.8 : 0.45))
+                .shadow(color: selected ? .white.opacity(0.5) : .clear, radius: selected ? 5 : 0)
+                .padding(3)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        // Hover lifts the chip, and switching sessions grows it in rather than snapping.
-        .scaleEffect(selected ? 1.08 : (hovering ? 1.04 : 1))
-        .animation(.spring(response: 0.28, dampingFraction: 0.64), value: selected)
-        .animation(.spring(response: 0.28, dampingFraction: 0.64), value: hovering)
+        .scaleEffect(selected ? 1.16 : (hovering ? 1.1 : 1))
+        .animation(.spring(response: 0.3, dampingFraction: 0.55), value: selected)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: hovering)
         .onHover { hovering = $0 }
         .help(source.displayName)
     }
