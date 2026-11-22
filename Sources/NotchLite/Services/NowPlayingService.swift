@@ -128,10 +128,13 @@ final class NowPlayingService {
 
     func elapsed(at date: Date) -> TimeInterval { selected?.elapsed(at: date) ?? 0 }
 
-    /// Changes whenever the shown track does; used to cross-fade the cover.
-    var trackIdentity: String {
-        guard let selected else { return "" }
-        return "\(selected.bundleID)|\(selected.title)|\(selected.artist)"
+    /// Bumped whenever a new cover is stored, so views can cross-fade on the image itself rather
+    /// than on the track metadata (which arrives well before the artwork does).
+    private var artworkVersion: [String: Int] = [:]
+
+    var artworkIdentity: String {
+        guard let bundle = selected?.bundleID else { return "" }
+        return "\(bundle)#\(artworkVersion[bundle] ?? 0)"
     }
 
     /// Player icon, also used by the session switcher in the header.
@@ -362,6 +365,7 @@ final class NowPlayingService {
         var covers = artworkCache
         covers[bundle] = image
         artworkCache = covers
+        artworkVersion[bundle, default: 0] += 1
         if let tint = image.vibrantAverageColor {
             var tints = artworkAccent
             tints[bundle] = Color(nsColor: tint)
